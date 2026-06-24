@@ -80,7 +80,7 @@ class MacFriendlyTab(tk.Label):
 class CancerSkinCADApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Sistem CAD Klasifikasi Kanker Kulit (MedMNIST-FSCA) — Tirta 01082230021")
+        self.root.title("Kanker Kulit (MedMNIST-FSCA) — Tirta 01082230021")
         self.root.geometry("1200x720")
         self.root.configure(bg="#2d2d2d")
 
@@ -204,7 +204,7 @@ class CancerSkinCADApp:
     # ------------------------------------------------------------------
     def create_execute_button(self):
         self.exec_btn = MacFriendlyTab(
-            self.root, text="► Jalankan", bg="#3b5998", fg="white",
+            self.root, text="Jalankan", bg="#3b5998", fg="white",
             font=("Arial", 11, "bold"), command=self.run_current_step, pady=11
         )
         self.exec_btn.pack(fill="x", side="bottom")
@@ -229,8 +229,8 @@ class CancerSkinCADApp:
         for name, tab in self.nav_tabs.items():
             tab.set_active(name == target_step)
 
-        self.title_label.config(text=f"🔸 {target_step}")
-        self.exec_btn.set_state("normal", text=f"► Jalankan {target_step}")
+        self.title_label.config(text=f"{target_step}")
+        self.exec_btn.set_state("normal", text=f"Jalankan {target_step}")
 
         # Reset viewer
         self.img_label.config(image="")
@@ -243,11 +243,11 @@ class CancerSkinCADApp:
                 final_path = os.path.join(BASE_DIR, "outputs", "ResNet18_FSCA_DermaMNIST_Best.pth")
                 size_mb = os.path.getsize(final_path) / 1e6 if os.path.exists(final_path) else 0
                 self.model_status_label.config(
-                    text=f"✔ ResNet18_FSCA_DermaMNIST_Best.pth  ({size_mb:.1f} MB)",
+                    text=f"ResNet18_FSCA_DermaMNIST_Best.pth  ({size_mb:.1f} MB)",
                     fg="#2ecc71"
                 )
                 self.files_status_label.config(
-                    text="✔ 7 Kelas Lesi — DermaMNIST. Klik Jalankan untuk generate Grad-CAM.",
+                    text="7 Kelas Lesi — DermaMNIST. Klik Jalankan untuk generate Grad-CAM.",
                     fg="white"
                 )
                 self.canvas_msg.config(text="Model siap. Klik tombol eksekusi.", fg="#666666")
@@ -306,7 +306,7 @@ class CancerSkinCADApp:
             self.write_terminal("Error: Eksekusi Grad-CAM dibatalkan — model belum ada.")
             return
 
-        self.exec_btn.set_state("disabled", text=f"⌛ Memproses {step}...")
+        self.exec_btn.set_state("disabled", text=f"Memproses {step}...")
         self.canvas_msg.config(text=f"Menjalankan {step}...", fg="#aaaaaa")
         self.img_label.config(image="")
         self.img_label.image = None
@@ -374,7 +374,7 @@ class CancerSkinCADApp:
         self.root.after(0, self._on_complete, step, result, error)
 
     def _on_complete(self, step, result, error):
-        self.exec_btn.set_state("normal", text=f"► Jalankan {step}")
+        self.exec_btn.set_state("normal", text=f"Jalankan {step}")
 
         if error:
             self.canvas_msg.config(
@@ -382,7 +382,7 @@ class CancerSkinCADApp:
             )
             return
 
-        self.write_terminal(f"✓ {step} Selesai.")
+        self.write_terminal(f"{step} Selesai.")
 
         # Simpan hasil & chart
         if result and isinstance(result, dict):
@@ -395,7 +395,7 @@ class CancerSkinCADApp:
                 return
 
         self.canvas_msg.config(
-            text=f"🌟 {step} Selesai!\nCek terminal untuk detail hasil.",
+            text=f"{step} Selesai!\nCek terminal untuk detail hasil.",
             fg="#2ecc71"
         )
 
