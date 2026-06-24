@@ -1,5 +1,5 @@
 """
-gui.py — Sistem CAD Klasifikasi Kanker Kulit
+gui.py — Klasifikasi Kanker Kulit
 =============================================
 GUI terintegrasi penuh dengan 10 Step ML pipeline FSCA.
 Author : Tirta (01082230021)
@@ -24,9 +24,6 @@ except ImportError:
     PIL_AVAILABLE = False
 
 
-# ====================================================================
-# CUSTOM COMPONENT: MAC-COMPATIBLE NAVIGATION & BUTTON TAB
-# ====================================================================
 class MacFriendlyTab(tk.Label):
     def __init__(self, master, text, bg, fg, font, command=None, is_active=False, **kwargs):
         super().__init__(master, text=text, bg=bg, fg=fg, font=font,
@@ -97,10 +94,18 @@ class CancerSkinCADApp:
         self.create_execute_button()
         self.switch_step("Step 1: Ekstraksi")
 
+        # Update wraplength saat window di-resize
+        self.canvas_frame.bind("<Configure>", self._on_canvas_resize)
+
         # Cek dependensi PIL sekali
         if not PIL_AVAILABLE:
             self.write_terminal("PERINGATAN: Pillow tidak terinstall. Chart tidak akan tampil di GUI.")
             self.write_terminal("Jalankan: pip install Pillow")
+
+    def _on_canvas_resize(self, event):
+        """Update wraplength canvas_msg agar selalu fit ke lebar frame."""
+        new_width = max(event.width - 40, 200)
+        self.canvas_msg.config(wraplength=new_width)
 
     # ------------------------------------------------------------------
     # NAVIGATION
@@ -115,13 +120,18 @@ class CancerSkinCADApp:
             "Step 7: Evaluation",  "Step 8: Grad-CAM",       "Step 9: Summary",
             "Step 10: Inference",
         ]
-        for step in steps:
+
+        # Grid columnconfigure agar semua kolom melebar rata
+        for col in range(len(steps)):
+            nav_frame.columnconfigure(col, weight=1)
+
+        for col, step in enumerate(steps):
             tab = MacFriendlyTab(
                 nav_frame, text=step, bg="#333333", fg="#aaaaaa", font=("Arial", 8),
-                padx=10, pady=10, is_active=False,
+                padx=0, pady=10, is_active=False,
                 command=lambda s=step: self.switch_step(s)
             )
-            tab.pack(side="left", fill="y", padx=1, pady=2)
+            tab.grid(row=0, column=col, sticky="nsew", padx=1, pady=2)
             self.nav_tabs[step] = tab
 
     # ------------------------------------------------------------------
@@ -171,9 +181,10 @@ class CancerSkinCADApp:
 
         self.canvas_msg = tk.Label(
             self.canvas_frame, text="", bg="#1a1a1a",
-            fg="#aaaaaa", font=("Arial", 10, "italic"), justify="center"
+            fg="#aaaaaa", font=("Arial", 10, "italic"),
+            justify="center", wraplength=800
         )
-        self.canvas_msg.place(relx=0.5, rely=0.5, anchor="center")
+        self.canvas_msg.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.9)
 
         # Label untuk menampilkan gambar chart
         self.img_label = tk.Label(self.canvas_frame, bg="#1a1a1a")
@@ -212,18 +223,6 @@ class CancerSkinCADApp:
     # ------------------------------------------------------------------
     # SWITCH TAB
     # ------------------------------------------------------------------
-    DESCRIPTIONS = {
-        "Step 1: Ekstraksi":    "Unduh dan ekstrak dataset DermaMNIST (28×28) via library medmnist.",
-        "Step 2: Preprocessing":"Hitung mean/std dan definisikan pipeline augmentasi data.",
-        "Step 3: Split Data":   "Tampilkan distribusi kelas Train/Val/Test dengan chart.",
-        "Step 4: Model FSCA":   "Rakit arsitektur ResNet-18 + 4 modul Fused Spatial-Channel Attention.",
-        "Step 5: Training":     "Training 30 epoch dengan AdamW + CosineAnnealingLR + Early Stopping.",
-        "Step 6: Finetune":     "Fine-tune layer akhir dengan LR kecil + Label Smoothing.",
-        "Step 7: Evaluation":   "Evaluasi model pada test set: Accuracy, F1-W, AUC, Confusion Matrix.",
-        "Step 9: Summary":      "Ringkasan performa akhir dan perbandingan dengan state-of-the-art.",
-        "Step 10: Inference":   "Upload citra dermatoskopi baru dan dapatkan prediksi + Grad-CAM.",
-    }
-
     def switch_step(self, target_step):
         self.current_step = target_step
         for name, tab in self.nav_tabs.items():
@@ -243,26 +242,25 @@ class CancerSkinCADApp:
                 final_path = os.path.join(BASE_DIR, "outputs", "ResNet18_FSCA_DermaMNIST_Best.pth")
                 size_mb = os.path.getsize(final_path) / 1e6 if os.path.exists(final_path) else 0
                 self.model_status_label.config(
-                    text=f"ResNet18_FSCA_DermaMNIST_Best.pth  ({size_mb:.1f} MB)",
+                    text=f"OK  ResNet18_FSCA_DermaMNIST_Best.pth  ({size_mb:.1f} MB)",
                     fg="#2ecc71"
                 )
                 self.files_status_label.config(
-                    text="7 Kelas Lesi — DermaMNIST. Klik Jalankan untuk generate Grad-CAM.",
+                    text="OK  7 Kelas Lesi — DermaMNIST. Klik Jalankan untuk generate Grad-CAM.",
                     fg="white"
                 )
-                self.canvas_msg.config(text="Model siap. Klik tombol eksekusi.", fg="#666666")
+                self.canvas_msg.config(text="", fg="#666666")
             else:
                 self.model_status_label.config(
                     text="(Tidak ada model. Jalankan Step 6 dan 7 terlebih dahulu.)",
                     fg="#ff6b6b"
                 )
                 self.files_status_label.config(text="(Menunggu...)", fg="#aaaaaa")
-                self.canvas_msg.config(text="Menunggu validasi model dari Step 6 & 7.", fg="#666666")
+                self.canvas_msg.config(text="", fg="#666666")
         else:
             self.model_lf.pack_forget()
             self.files_lf.pack_forget()
-            desc = self.DESCRIPTIONS.get(target_step, "")
-            self.canvas_msg.config(text=desc, fg="white")
+            self.canvas_msg.config(text="", fg="white")
 
             # Tampilkan chart terakhir jika ada
             chart_key = target_step
