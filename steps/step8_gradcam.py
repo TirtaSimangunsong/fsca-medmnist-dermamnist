@@ -145,7 +145,7 @@ def run(log_fn):
     fig.suptitle("Grad-CAM Visualization — ResNet-18 + FSCA\n(DermaMNIST 28×28)",
                  color="white", fontsize=13, fontweight="bold", y=1.01)
 
-    colormap = cm.colormaps["jet"] if hasattr(cm, "colormaps") else cm.get_cmap("jet")
+    colormap = plt.get_cmap("jet")
 
     for cls_idx in range(n_classes):
         cls_name  = class_map[str(cls_idx)]
