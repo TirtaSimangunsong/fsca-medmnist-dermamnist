@@ -95,7 +95,7 @@ def predict_image(image_path, log_fn):
 
     # Visualisasi
     img_disp = np.array(pil_img.resize((28, 28), Image.NEAREST)) / 255.0
-    _cmap    = cm_mod.colormaps["jet"] if hasattr(cm_mod, "colormaps") else cm_mod.get_cmap("jet")
+    _cmap    = cm_mod.colormaps["jet"] if hasattr(cm_mod, "colormaps") else plt.get_cmap("jet")
     heatmap  = _cmap(cam)[:, :, :3]
     overlay  = (0.55 * img_disp + 0.45 * heatmap).clip(0, 1)
 
