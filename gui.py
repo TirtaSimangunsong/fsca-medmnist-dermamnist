@@ -12,7 +12,6 @@ import time
 import os
 import sys
 
-# Tambahkan folder steps ke path
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 STEPS_DIR = os.path.join(BASE_DIR, "steps")
 sys.path.insert(0, STEPS_DIR)
@@ -24,6 +23,9 @@ except ImportError:
     PIL_AVAILABLE = False
 
 
+# ====================================================================
+# CUSTOM COMPONENT
+# ====================================================================
 class MacFriendlyTab(tk.Label):
     def __init__(self, master, text, bg, fg, font, command=None, is_active=False, **kwargs):
         super().__init__(master, text=text, bg=bg, fg=fg, font=font,
@@ -39,7 +41,7 @@ class MacFriendlyTab(tk.Label):
 
     def _on_enter(self, event):
         if self.state == "normal":
-            if self.is_active:               self.config(bg="#1a62d6")
+            if self.is_active:                 self.config(bg="#1a62d6")
             elif self.default_bg == "#333333": self.config(bg="#444444")
             elif self.default_bg == "#3b5998": self.config(bg="#4a6ea8")
             elif self.default_bg == "#444444": self.config(bg="#555555")
@@ -77,16 +79,18 @@ class MacFriendlyTab(tk.Label):
 class CancerSkinCADApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Kanker Kulit (MedMNIST-FSCA) — Tirta 01082230021")
+        self.root.title("Klasifikasi Kanker Kulit (MedMNIST-FSCA) — Tirta 01082230021")
         self.root.geometry("1200x720")
         self.root.configure(bg="#2d2d2d")
 
         # State
-        self.step_6_7_done  = False
-        self.nav_tabs       = {}
-        self.current_step   = ""
-        self.chart_images   = {}   # simpan referensi PhotoImage agar tidak di-GC
-        self.last_result    = {}   # hasil return dari setiap step
+        self.step_6_7_done = False
+        self.nav_tabs      = {}
+        self.current_step  = ""
+        self.chart_images  = {}   # { step_name: path }
+        self.last_result   = {}
+        self.step_logs     = {}   # { step_name: [line, line, ...] }
+        self._img_ref      = None # cegah GC PhotoImage
 
         self.create_top_navigation()
         self.create_main_content()
@@ -94,18 +98,8 @@ class CancerSkinCADApp:
         self.create_execute_button()
         self.switch_step("Step 1: Ekstraksi")
 
-        # Update wraplength saat window di-resize
-        self.canvas_frame.bind("<Configure>", self._on_canvas_resize)
-
-        # Cek dependensi PIL sekali
         if not PIL_AVAILABLE:
-            self.write_terminal("PERINGATAN: Pillow tidak terinstall. Chart tidak akan tampil di GUI.")
-            self.write_terminal("Jalankan: pip install Pillow")
-
-    def _on_canvas_resize(self, event):
-        """Update wraplength canvas_msg agar selalu fit ke lebar frame."""
-        new_width = max(event.width - 40, 200)
-        self.canvas_msg.config(wraplength=new_width)
+            self.write_terminal("PERINGATAN: Pillow tidak terinstall. Jalankan: pip install Pillow")
 
     # ------------------------------------------------------------------
     # NAVIGATION
@@ -120,8 +114,6 @@ class CancerSkinCADApp:
             "Step 7: Evaluation",  "Step 8: Grad-CAM",       "Step 9: Summary",
             "Step 10: Inference",
         ]
-
-        # Grid columnconfigure agar semua kolom melebar rata
         for col in range(len(steps)):
             nav_frame.columnconfigure(col, weight=1)
 
@@ -175,23 +167,231 @@ class CancerSkinCADApp:
         )
         self.results_lf.pack(fill="both", expand=True, pady=5)
 
-        # Canvas + scrollbar untuk chart
         self.canvas_frame = tk.Frame(self.results_lf, bg="#1a1a1a")
         self.canvas_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
-        self.canvas_msg = tk.Label(
-            self.canvas_frame, text="", bg="#1a1a1a",
-            fg="#aaaaaa", font=("Arial", 10, "italic"),
-            justify="center", wraplength=800
+        # ── Text widget: log output kiri atas (untuk step tanpa chart) ──
+        self.dashboard_text = tk.Text(
+            self.canvas_frame,
+            bg="#1a1a1a", fg="#cccccc",
+            font=("Consolas", 10),
+            bd=0, padx=12, pady=10,
+            wrap="word",
+            state="disabled",   # read-only
+            cursor="arrow",
         )
-        self.canvas_msg.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.9)
+        # Scrollbar untuk dashboard_text
+        self.dash_scrollbar = tk.Scrollbar(
+            self.canvas_frame, command=self.dashboard_text.yview,
+            bg="#333333", troughcolor="#1a1a1a"
+        )
+        self.dashboard_text.config(yscrollcommand=self.dash_scrollbar.set)
 
-        # Label untuk menampilkan gambar chart
+        # ── Image label: chart (untuk step dengan chart) ──
         self.img_label = tk.Label(self.canvas_frame, bg="#1a1a1a")
-        self.img_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Default: tampilkan mode teks (kosong)
+        self._show_text_mode()
 
     # ------------------------------------------------------------------
-    # TERMINAL
+    # HELPER: toggle mode dashboard
+    # ------------------------------------------------------------------
+    def _show_text_mode(self):
+        """Tampilkan dashboard_text (kiri atas), sembunyikan img_label."""
+        self.img_label.place_forget()
+        self.dash_scrollbar.pack(side="right", fill="y")
+        self.dashboard_text.pack(side="left", fill="both", expand=True)
+
+    def _show_image_mode(self):
+        """Tampilkan img_label (tengah), sembunyikan dashboard_text."""
+        self.dashboard_text.pack_forget()
+        self.dash_scrollbar.pack_forget()
+        self.img_label.place(relx=0.5, rely=0.5, anchor="center")
+
+    def _set_dashboard_text(self, lines, color="#cccccc"):
+        """Tulis list of strings ke dashboard_text (read-only)."""
+        self.dashboard_text.config(state="normal")
+        self.dashboard_text.delete("1.0", tk.END)
+        if lines:
+            self.dashboard_text.insert(tk.END, "\n".join(lines))
+        self.dashboard_text.config(state="disabled", fg=color)
+
+    def _display_chart(self, chart_path):
+        """Load dan tampilkan chart PNG di img_label."""
+        if not PIL_AVAILABLE or not chart_path or not os.path.exists(chart_path):
+            return
+        try:
+            self.root.update_idletasks()
+            fw = max(self.canvas_frame.winfo_width()  - 20, 400)
+            fh = max(self.canvas_frame.winfo_height() - 10, 200)
+
+            img = Image.open(chart_path)
+            img.thumbnail((fw, fh), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(img)
+
+            self._img_ref = photo          # cegah GC
+            self.img_label.config(image=photo)
+            self.img_label.image = photo
+        except Exception as e:
+            self.write_terminal(f"Gagal menampilkan chart: {e}")
+
+    # ------------------------------------------------------------------
+    # SWITCH TAB
+    # ------------------------------------------------------------------
+    def switch_step(self, target_step):
+        self.current_step = target_step
+        for name, tab in self.nav_tabs.items():
+            tab.set_active(name == target_step)
+
+        self.title_label.config(text=target_step)
+        self.exec_btn.set_state("normal", text=f"Jalankan {target_step}")
+
+        if "Step 8" in target_step:
+            self.model_lf.pack(fill="x", before=self.results_lf, pady=4)
+            self.files_lf.pack(fill="x", before=self.results_lf, pady=4)
+            if self.step_6_7_done:
+                final_path = os.path.join(BASE_DIR, "outputs", "ResNet18_FSCA_DermaMNIST_Best.pth")
+                size_mb = os.path.getsize(final_path) / 1e6 if os.path.exists(final_path) else 0
+                self.model_status_label.config(
+                    text=f"Model ditemukan: ResNet18_FSCA_DermaMNIST_Best.pth  ({size_mb:.1f} MB)",
+                    fg="#2ecc71"
+                )
+                self.files_status_label.config(
+                    text="7 Kelas Lesi tersedia — DermaMNIST. Klik Jalankan untuk generate Grad-CAM.",
+                    fg="white"
+                )
+            else:
+                self.model_status_label.config(
+                    text="(Tidak ada model. Jalankan Step 6 dan 7 terlebih dahulu.)",
+                    fg="#ff6b6b"
+                )
+                self.files_status_label.config(text="(Menunggu...)", fg="#aaaaaa")
+        else:
+            self.model_lf.pack_forget()
+            self.files_lf.pack_forget()
+
+        # Pulihkan tampilan terakhir step ini
+        self._restore_dashboard(target_step)
+
+    def _restore_dashboard(self, step):
+        """Tampilkan chart jika ada, atau log terakhir jika ada, atau kosong."""
+        if step in self.chart_images:
+            self._show_image_mode()
+            self._display_chart(self.chart_images[step])
+        elif step in self.step_logs and self.step_logs[step]:
+            self._show_text_mode()
+            self._set_dashboard_text(self.step_logs[step])
+        else:
+            self._show_text_mode()
+            self._set_dashboard_text([])
+
+    # ------------------------------------------------------------------
+    # EXECUTE LOGIC
+    # ------------------------------------------------------------------
+    def run_current_step(self):
+        step = self.current_step
+
+        if "Step 8" in step and not self.step_6_7_done:
+            messagebox.showwarning(
+                "Akses Ditolak",
+                "Model .pth belum tersedia!\nJalankan Step 6 dan Step 7 terlebih dahulu."
+            )
+            self.write_terminal("Error: Eksekusi Grad-CAM dibatalkan — model belum ada.")
+            return
+
+        # Reset log step ini
+        self.step_logs[step] = []
+        self.exec_btn.set_state("disabled", text=f"Memproses {step}...")
+
+        # Kosongkan dashboard saat memproses
+        self._show_text_mode()
+        self._set_dashboard_text([f"Menjalankan {step}..."], color="#aaaaaa")
+
+        self.img_label.config(image="")
+        self.img_label.image = None
+
+        threading.Thread(target=self._worker, args=(step,), daemon=True).start()
+
+    def _worker(self, step):
+        self.write_terminal(f"--- Memulai {step} ---")
+        result = None
+        error  = None
+
+        try:
+            if   "Step 1"  in step: import step1_extract    as m; result = m.run(self.write_terminal)
+            elif "Step 2"  in step: import step2_preprocess as m; result = m.run(self.write_terminal)
+            elif "Step 3"  in step: import step3_split      as m; result = m.run(self.write_terminal)
+            elif "Step 4"  in step: import step4_model      as m; result = m.run(self.write_terminal)
+            elif "Step 5"  in step: import step5_training   as m; result = m.run(self.write_terminal)
+            elif "Step 6"  in step: import step6_finetune   as m; result = m.run(self.write_terminal)
+            elif "Step 7"  in step:
+                import step7_evaluation as m
+                result = m.run(self.write_terminal)
+                final = os.path.join(BASE_DIR, "outputs", "ResNet18_FSCA_DermaMNIST_Best.pth")
+                if os.path.exists(final):
+                    self.step_6_7_done = True
+            elif "Step 8"  in step: import step8_gradcam    as m; result = m.run(self.write_terminal)
+            elif "Step 9"  in step: import step9_summary    as m; result = m.run(self.write_terminal)
+            elif "Step 10" in step: import step10_inference  as m; result = m.run(self.write_terminal)
+
+        except Exception as e:
+            import traceback
+            error = traceback.format_exc()
+            self.write_terminal(f"\nERROR: {e}")
+            self.write_terminal("--- Traceback lengkap ada di terminal sistem ---")
+            print(error)
+
+        self.root.after(0, self._on_complete, step, result, error)
+
+    def _on_complete(self, step, result, error):
+        self.exec_btn.set_state("normal", text=f"Jalankan {step}")
+
+        if error:
+            # Tampilkan log (termasuk pesan error) di dashboard
+            logs = self.step_logs.get(step, [])
+            self._show_text_mode()
+            self._set_dashboard_text(logs, color="#ff9999")
+            return
+
+        self.write_terminal(f"{step} Selesai.")
+
+        # Jika ada chart → tampilkan chart
+        if result and isinstance(result, dict):
+            self.last_result[step] = result
+            chart_path = result.get("chart_path")
+            if chart_path and os.path.exists(chart_path):
+                self.chart_images[step] = chart_path
+                self._show_image_mode()
+                self._display_chart(chart_path)
+                return
+
+        # Tidak ada chart → tampilkan log terminal di dashboard
+        logs = self.step_logs.get(step, [])
+        self._show_text_mode()
+        self._set_dashboard_text(logs, color="#cccccc")
+
+    # ------------------------------------------------------------------
+    # TERMINAL HELPERS
+    # ------------------------------------------------------------------
+    def write_terminal(self, text):
+        def _write():
+            self.terminal.insert(tk.END, f"[{time.strftime('%H:%M:%S')}] {text}\n")
+            self.terminal.see(tk.END)
+            # Akumulasi log untuk dashboard
+            step = self.current_step
+            if step:
+                self.step_logs.setdefault(step, []).append(text)
+        try:
+            self.root.after(0, _write)
+        except Exception:
+            pass
+
+    def clear_terminal(self):
+        self.terminal.delete("1.0", tk.END)
+        self.write_terminal("Terminal logs dibersihkan.")
+
+    # ------------------------------------------------------------------
+    # EXECUTE BUTTON
     # ------------------------------------------------------------------
     def create_terminal_output(self):
         term_bar = tk.Frame(self.root, bg="#2d2d2d", padx=20)
@@ -210,209 +410,12 @@ class CancerSkinCADApp:
         )
         self.terminal.pack(fill="x", padx=20, pady=(0, 8))
 
-    # ------------------------------------------------------------------
-    # EXECUTE BUTTON
-    # ------------------------------------------------------------------
     def create_execute_button(self):
         self.exec_btn = MacFriendlyTab(
             self.root, text="Jalankan", bg="#3b5998", fg="white",
             font=("Arial", 11, "bold"), command=self.run_current_step, pady=11
         )
         self.exec_btn.pack(fill="x", side="bottom")
-
-    # ------------------------------------------------------------------
-    # SWITCH TAB
-    # ------------------------------------------------------------------
-    def switch_step(self, target_step):
-        self.current_step = target_step
-        for name, tab in self.nav_tabs.items():
-            tab.set_active(name == target_step)
-
-        self.title_label.config(text=f"{target_step}")
-        self.exec_btn.set_state("normal", text=f"Jalankan {target_step}")
-
-        # Reset viewer
-        self.img_label.config(image="")
-        self.img_label.image = None
-
-        if "Step 8" in target_step:
-            self.model_lf.pack(fill="x", before=self.results_lf, pady=4)
-            self.files_lf.pack(fill="x", before=self.results_lf, pady=4)
-            if self.step_6_7_done:
-                final_path = os.path.join(BASE_DIR, "outputs", "ResNet18_FSCA_DermaMNIST_Best.pth")
-                size_mb = os.path.getsize(final_path) / 1e6 if os.path.exists(final_path) else 0
-                self.model_status_label.config(
-                    text=f"OK  ResNet18_FSCA_DermaMNIST_Best.pth  ({size_mb:.1f} MB)",
-                    fg="#2ecc71"
-                )
-                self.files_status_label.config(
-                    text="OK  7 Kelas Lesi — DermaMNIST. Klik Jalankan untuk generate Grad-CAM.",
-                    fg="white"
-                )
-                self.canvas_msg.config(text="", fg="#666666")
-            else:
-                self.model_status_label.config(
-                    text="(Tidak ada model. Jalankan Step 6 dan 7 terlebih dahulu.)",
-                    fg="#ff6b6b"
-                )
-                self.files_status_label.config(text="(Menunggu...)", fg="#aaaaaa")
-                self.canvas_msg.config(text="", fg="#666666")
-        else:
-            self.model_lf.pack_forget()
-            self.files_lf.pack_forget()
-            self.canvas_msg.config(text="", fg="white")
-
-            # Tampilkan chart terakhir jika ada
-            chart_key = target_step
-            if chart_key in self.chart_images:
-                self._display_chart(self.chart_images[chart_key])
-
-    # ------------------------------------------------------------------
-    # TAMPILKAN CHART DI DASHBOARD
-    # ------------------------------------------------------------------
-    def _display_chart(self, chart_path):
-        if not PIL_AVAILABLE or not chart_path or not os.path.exists(chart_path):
-            return
-        try:
-            # Hitung ukuran frame
-            self.root.update_idletasks()
-            fw = self.canvas_frame.winfo_width()  - 20
-            fh = self.canvas_frame.winfo_height() - 10
-            fw = max(fw, 400); fh = max(fh, 200)
-
-            img = Image.open(chart_path)
-            img.thumbnail((fw, fh), Image.LANCZOS)
-            photo = ImageTk.PhotoImage(img)
-
-            self.img_label.config(image=photo)
-            self.img_label.image = photo   # cegah GC
-            self.canvas_msg.config(text="")
-        except Exception as e:
-            self.write_terminal(f"Gagal menampilkan chart: {e}")
-
-    # ------------------------------------------------------------------
-    # EXECUTE LOGIC
-    # ------------------------------------------------------------------
-    def run_current_step(self):
-        step = self.current_step
-
-        if "Step 8" in step and not self.step_6_7_done:
-            messagebox.showwarning(
-                "Akses Ditolak",
-                "Model .pth belum tersedia!\nJalankan Step 6 dan Step 7 terlebih dahulu."
-            )
-            self.write_terminal("Error: Eksekusi Grad-CAM dibatalkan — model belum ada.")
-            return
-
-        self.exec_btn.set_state("disabled", text=f"Memproses {step}...")
-        self.canvas_msg.config(text=f"Menjalankan {step}...", fg="#aaaaaa")
-        self.img_label.config(image="")
-        self.img_label.image = None
-
-        threading.Thread(target=self._worker, args=(step,), daemon=True).start()
-
-    def _worker(self, step):
-        self.write_terminal(f"--- Memulai {step} ---")
-        result = None
-        error  = None
-
-        try:
-            if "Step 1" in step:
-                import step1_extract as m
-                result = m.run(self.write_terminal)
-
-            elif "Step 2" in step:
-                import step2_preprocess as m
-                result = m.run(self.write_terminal)
-
-            elif "Step 3" in step:
-                import step3_split as m
-                result = m.run(self.write_terminal)
-
-            elif "Step 4" in step:
-                import step4_model as m
-                result = m.run(self.write_terminal)
-
-            elif "Step 5" in step:
-                import step5_training as m
-                result = m.run(self.write_terminal)
-
-            elif "Step 6" in step:
-                import step6_finetune as m
-                result = m.run(self.write_terminal)
-
-            elif "Step 7" in step:
-                import step7_evaluation as m
-                result = m.run(self.write_terminal)
-                # Step 6 & 7 selesai → buka kunci Grad-CAM
-                final = os.path.join(BASE_DIR, "outputs", "ResNet18_FSCA_DermaMNIST_Best.pth")
-                if os.path.exists(final):
-                    self.step_6_7_done = True
-
-            elif "Step 8" in step:
-                import step8_gradcam as m
-                result = m.run(self.write_terminal)
-
-            elif "Step 9" in step:
-                import step9_summary as m
-                result = m.run(self.write_terminal)
-
-            elif "Step 10" in step:
-                import step10_inference as m
-                result = m.run(self.write_terminal)
-
-        except Exception as e:
-            import traceback
-            error = traceback.format_exc()
-            self.write_terminal(f"\nERROR: {e}")
-            self.write_terminal("--- Traceback lengkap ada di terminal sistem ---")
-            print(error)   # log ke konsol sistem
-
-        # Kembali ke main thread
-        self.root.after(0, self._on_complete, step, result, error)
-
-    def _on_complete(self, step, result, error):
-        self.exec_btn.set_state("normal", text=f"Jalankan {step}")
-
-        if error:
-            self.canvas_msg.config(
-                text=f"{step} GAGAL\nLihat terminal untuk detail error.", fg="#ff6b6b"
-            )
-            return
-
-        self.write_terminal(f"{step} Selesai.")
-
-        # Simpan hasil & chart
-        if result and isinstance(result, dict):
-            self.last_result[step] = result
-            chart_path = result.get("chart_path")
-            if chart_path and os.path.exists(chart_path):
-                self.chart_images[step] = chart_path
-                self._display_chart(chart_path)
-                self.canvas_msg.config(text="")
-                return
-
-        self.canvas_msg.config(
-            text=f"{step} Selesai!\nCek terminal untuk detail hasil.",
-            fg="#2ecc71"
-        )
-
-    # ------------------------------------------------------------------
-    # TERMINAL HELPERS
-    # ------------------------------------------------------------------
-    def write_terminal(self, text):
-        def _write():
-            self.terminal.insert(tk.END, f"[{time.strftime('%H:%M:%S')}] {text}\n")
-            self.terminal.see(tk.END)
-        # Thread-safe: panggil via main thread
-        try:
-            self.root.after(0, _write)
-        except Exception:
-            pass   # root mungkin sudah destroy
-
-    def clear_terminal(self):
-        self.terminal.delete("1.0", tk.END)
-        self.write_terminal("Terminal logs dibersihkan.")
 
 
 # ====================================================================

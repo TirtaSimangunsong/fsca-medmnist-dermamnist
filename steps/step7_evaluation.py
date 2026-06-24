@@ -149,8 +149,11 @@ def run(log_fn):
         "f1_weighted": round(f1_w, 4),
         "f1_macro":   round(f1_macro, 4),
         "auc_macro":  round(auc, 4),
-        "per_class":  {k: {m: round(v, 4) for m, v in v.items() if isinstance(v, float)}
-                       for k, v in report.items()},
+        "per_class":  {
+            cls_name: {metric: round(val, 4) for metric, val in cls_data.items() if isinstance(val, float)}
+            for cls_name, cls_data in report.items()
+            if isinstance(cls_data, dict)
+        },
         "chart_path": CM_PATH,
     }
     with open(REPORT_PATH, "w") as f:
