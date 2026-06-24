@@ -132,14 +132,14 @@ class CancerSkinCADApp:
         self.main_frame.pack(fill="both", expand=True)
 
         self.title_label = tk.Label(
-            self.main_frame, text="🔸 Halaman Utama",
+            self.main_frame, text="Halaman Utama",
             bg="#2d2d2d", fg="white", font=("Arial", 12, "bold")
         )
         self.title_label.pack(anchor="w", pady=(0, 8))
 
         # Komponen eksklusif Step 8
         self.model_lf = tk.LabelFrame(
-            self.main_frame, text="📁 Model to Analyze",
+            self.main_frame, text="Model to Analyze",
             bg="#2d2d2d", fg="#aaaaaa", font=("Arial", 9)
         )
         self.model_status_label = tk.Label(
@@ -149,7 +149,7 @@ class CancerSkinCADApp:
         self.model_status_label.pack(fill="x", padx=5, pady=4)
 
         self.files_lf = tk.LabelFrame(
-            self.main_frame, text="📂 Grad-CAM Output Files",
+            self.main_frame, text="Grad-CAM Output Files",
             bg="#2d2d2d", fg="#aaaaaa", font=("Arial", 9)
         )
         self.files_status_label = tk.Label(
@@ -160,7 +160,7 @@ class CancerSkinCADApp:
 
         # Dashboard Viewer
         self.results_lf = tk.LabelFrame(
-            self.main_frame, text="🖼️ Dashboard Viewer",
+            self.main_frame, text="Dashboard Viewer",
             bg="#2d2d2d", fg="#aaaaaa", font=("Arial", 9)
         )
         self.results_lf.pack(fill="both", expand=True, pady=5)
@@ -186,7 +186,7 @@ class CancerSkinCADApp:
         term_bar = tk.Frame(self.root, bg="#2d2d2d", padx=20)
         term_bar.pack(fill="x")
 
-        tk.Label(term_bar, text="📟 Terminal Output:", bg="#2d2d2d", fg="white",
+        tk.Label(term_bar, text="Terminal Output:", bg="#2d2d2d", fg="white",
                  font=("Arial", 10, "bold")).pack(side="left", pady=4)
 
         MacFriendlyTab(term_bar, text="Clear Logs", bg="#444444", fg="white",
@@ -307,7 +307,7 @@ class CancerSkinCADApp:
             return
 
         self.exec_btn.set_state("disabled", text=f"⌛ Memproses {step}...")
-        self.canvas_msg.config(text=f"⚙️ Menjalankan {step}...", fg="#aaaaaa")
+        self.canvas_msg.config(text=f"Menjalankan {step}...", fg="#aaaaaa")
         self.img_label.config(image="")
         self.img_label.image = None
 
@@ -378,7 +378,7 @@ class CancerSkinCADApp:
 
         if error:
             self.canvas_msg.config(
-                text=f"❌ {step} GAGAL\nLihat terminal untuk detail error.", fg="#ff6b6b"
+                text=f"{step} GAGAL\nLihat terminal untuk detail error.", fg="#ff6b6b"
             )
             return
 
