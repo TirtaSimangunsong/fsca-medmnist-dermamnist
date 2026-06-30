@@ -17,23 +17,19 @@ import json
 import time
 import sys
 
-OUTPUT_DIR      = os.path.join(os.path.dirname(__file__), "..", "outputs")
-META_PATH       = os.path.join(OUTPUT_DIR, "dataset_meta.json")
-CONFIG_PATH     = os.path.join(OUTPUT_DIR, "preprocess_config.json")
-SPLIT_PATH      = os.path.join(OUTPUT_DIR, "split_info.json")
-CKPT_PATH       = os.path.join(OUTPUT_DIR, "checkpoint_best.pth")
-FINAL_MODEL_PATH = os.path.join(OUTPUT_DIR, "ResNet18_FSCA_DermaMNIST_Best.pth")
-HISTORY_PATH    = os.path.join(OUTPUT_DIR, "finetune_history.json")
-CURVE_PATH      = os.path.join(OUTPUT_DIR, "finetune_curve.png")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from config import PATHS, DATASET, AUGMENTATION, FINETUNE_HP
 
-FINETUNE_HP = {
-    "epochs":         15,
-    "batch_size":     32,
-    "lr":             1e-4,    # 10x lebih kecil
-    "weight_decay":   1e-4,
-    "label_smoothing": 0.1,
-    "patience":       5,
-}
+OUTPUT_DIR      = PATHS["output_dir"]
+META_PATH       = PATHS["dataset_meta"]
+CONFIG_PATH     = PATHS["preprocess_config"]
+SPLIT_PATH      = PATHS["split_info"]
+CKPT_PATH       = PATHS["checkpoint_best"]
+FINAL_MODEL_PATH = PATHS["final_model"]
+HISTORY_PATH    = PATHS["finetune_history"]
+CURVE_PATH      = PATHS["finetune_curve_chart"]
+
+# FINETUNE_HP kini berasal dari config.py — termasuk unfreeze_keys
 
 
 def _freeze_except(model, unfreeze_keys):
@@ -73,8 +69,8 @@ def run(log_fn):
     model.load_state_dict(torch.load(CKPT_PATH, map_location=device))
     log_fn("Checkpoint berhasil dimuat.")
 
-    # Freeze layer awal, unfreeze layer3/4, FSCA, fc
-    unfreeze_keys = ["layer3", "layer4", "fsca3", "fsca4", "fc"]
+    # Freeze layer awal, unfreeze layer3/4, FSCA, fc (key dari config.py)
+    unfreeze_keys = FINETUNE_HP["unfreeze_keys"]
     _freeze_except(model, unfreeze_keys)
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     log_fn(f"Parameter trainable setelah freeze: {trainable:,}")
@@ -83,12 +79,18 @@ def run(log_fn):
     # DataLoaders
     mean, std = config["mean"], config["std"]
     bs = FINETUNE_HP["batch_size"]
+    img_size = DATASET["image_size"]
+    aug = AUGMENTATION
 
     train_transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(0.5),
-        transforms.RandomVerticalFlip(0.5),
-        transforms.RandomRotation(15),
-        transforms.ColorJitter(0.2, 0.2, 0.2),
+        transforms.RandomHorizontalFlip(aug["horizontal_flip_p"]),
+        transforms.RandomVerticalFlip(aug["vertical_flip_p"]),
+        transforms.RandomRotation(aug["rotation_degrees"]),
+        transforms.ColorJitter(
+            aug["color_jitter"]["brightness"],
+            aug["color_jitter"]["contrast"],
+            aug["color_jitter"]["saturation"],
+        ),
         transforms.ToTensor(),
         transforms.Normalize(mean, std),
     ])
@@ -97,8 +99,8 @@ def run(log_fn):
         transforms.Normalize(mean, std),
     ])
 
-    train_ds = DermaMNIST(split="train", transform=train_transform, download=True, size=28)
-    val_ds   = DermaMNIST(split="val",   transform=eval_transform,  download=True, size=28)
+    train_ds = DermaMNIST(split="train", transform=train_transform, download=DATASET["download"], size=img_size)
+    val_ds   = DermaMNIST(split="val",   transform=eval_transform,  download=DATASET["download"], size=img_size)
 
     sample_weights = torch.tensor(split_info["sample_weights"], dtype=torch.float)
     sampler = WeightedRandomSampler(sample_weights, len(sample_weights), replacement=True)
@@ -118,7 +120,10 @@ def run(log_fn):
     best_val_acc, patience_cnt, best_epoch = 0.0, 0, 0
 
     log_fn(f"\nHyperparameter Finetuning:")
-    for k, v in FINETUNE_HP.items(): log_fn(f"  {k:<20}: {v}")
+    for k, v in FINETUNE_HP.items():
+        if k == "unfreeze_keys":
+            continue
+        log_fn(f"  {k:<20}: {v}")
     log_fn("\nMemulai Finetuning...")
     log_fn("-" * 55)
 

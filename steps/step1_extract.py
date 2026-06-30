@@ -6,11 +6,15 @@ dan menyimpan metadata ke file JSON untuk step selanjutnya.
 """
 
 import os
+import sys
 import json
 import numpy as np
 
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "outputs")
-META_PATH  = os.path.join(OUTPUT_DIR, "dataset_meta.json")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from config import PATHS, DATASET, ensure_dirs, validate_image_size
+
+OUTPUT_DIR = PATHS["output_dir"]
+META_PATH  = PATHS["dataset_meta"]
 
 
 def run(log_fn):
@@ -27,15 +31,18 @@ def run(log_fn):
         log_fn("Jalankan: pip install medmnist")
         raise
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    ensure_dirs()
+    validate_image_size(DATASET["image_size"])
+    img_size = DATASET["image_size"]
 
     log_fn("Menghubungi server MedMNIST untuk mengunduh DermaMNIST...")
     log_fn(f"Library medmnist versi: {medmnist.__version__}")
+    log_fn(f"Resolusi target (dari config.py): {img_size}x{img_size}")
 
     # Download otomatis — medmnist menyimpan ke ~/.medmnist/
-    train_ds = DermaMNIST(split="train", download=True, size=28)
-    val_ds   = DermaMNIST(split="val",   download=True, size=28)
-    test_ds  = DermaMNIST(split="test",  download=True, size=28)
+    train_ds = DermaMNIST(split="train", download=DATASET["download"], size=img_size)
+    val_ds   = DermaMNIST(split="val",   download=DATASET["download"], size=img_size)
+    test_ds  = DermaMNIST(split="test",  download=DATASET["download"], size=img_size)
 
     n_train = len(train_ds)
     n_val   = len(val_ds)
@@ -76,7 +83,7 @@ def run(log_fn):
         "class_counts": class_counts,
         "n_channels":   n_channels,
         "task":         task,
-        "image_size":   28,
+        "image_size":   img_size,
     }
     with open(META_PATH, "w") as f:
         json.dump(meta, f, indent=2)

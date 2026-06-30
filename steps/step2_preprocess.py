@@ -7,12 +7,16 @@ Hasilnya disimpan ke outputs/preprocess_config.json.
 """
 
 import os
+import sys
 import json
 import numpy as np
 
-OUTPUT_DIR   = os.path.join(os.path.dirname(__file__), "..", "outputs")
-META_PATH    = os.path.join(OUTPUT_DIR, "dataset_meta.json")
-CONFIG_PATH  = os.path.join(OUTPUT_DIR, "preprocess_config.json")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from config import PATHS, DATASET, AUGMENTATION, ensure_dirs
+
+OUTPUT_DIR   = PATHS["output_dir"]
+META_PATH    = PATHS["dataset_meta"]
+CONFIG_PATH  = PATHS["preprocess_config"]
 
 
 def run(log_fn):
@@ -39,9 +43,10 @@ def run(log_fn):
 
     log_fn("Memuat dataset mentah untuk menghitung statistik normalisasi...")
 
+    img_size = DATASET["image_size"]
     # Load tanpa augmentasi dulu untuk hitung mean/std
     raw_transform = transforms.Compose([transforms.ToTensor()])
-    train_raw = DermaMNIST(split="train", transform=raw_transform, download=True, size=28)
+    train_raw = DermaMNIST(split="train", transform=raw_transform, download=DATASET["download"], size=img_size)
 
     loader = torch.utils.data.DataLoader(train_raw, batch_size=256, num_workers=0)
 
@@ -67,12 +72,15 @@ def run(log_fn):
     log_fn(f"Mean (R,G,B) : {[round(v,4) for v in mean_list]}")
     log_fn(f"Std  (R,G,B) : {[round(v,4) for v in std_list]}")
 
-    # Definisi augmentasi training
+    # Definisi augmentasi training (parameter dari config.py)
+    aug = AUGMENTATION
     train_aug = [
-        "RandomHorizontalFlip(p=0.5)",
-        "RandomVerticalFlip(p=0.5)",
-        "RandomRotation(degrees=15)",
-        "ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2)",
+        f"RandomHorizontalFlip(p={aug['horizontal_flip_p']})",
+        f"RandomVerticalFlip(p={aug['vertical_flip_p']})",
+        f"RandomRotation(degrees={aug['rotation_degrees']})",
+        f"ColorJitter(brightness={aug['color_jitter']['brightness']}, "
+        f"contrast={aug['color_jitter']['contrast']}, "
+        f"saturation={aug['color_jitter']['saturation']})",
         "ToTensor()",
         f"Normalize(mean={[round(v,4) for v in mean_list]}, std={[round(v,4) for v in std_list]})",
     ]
@@ -94,10 +102,10 @@ def run(log_fn):
         "std":       std_list,
         "train_aug": train_aug,
         "val_aug":   val_aug,
-        "image_size": 28,
+        "image_size": img_size,
     }
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    ensure_dirs()
     with open(CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=2)
 

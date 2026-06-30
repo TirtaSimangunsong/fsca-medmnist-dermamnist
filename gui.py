@@ -15,6 +15,9 @@ import sys
 BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
 STEPS_DIR = os.path.join(BASE_DIR, "steps")
 sys.path.insert(0, STEPS_DIR)
+sys.path.insert(0, BASE_DIR)
+
+from config import PATHS
 
 try:
     from PIL import Image, ImageTk
@@ -250,7 +253,7 @@ class CancerSkinCADApp:
             self.model_lf.pack(fill="x", before=self.results_lf, pady=4)
             self.files_lf.pack(fill="x", before=self.results_lf, pady=4)
             if self.step_6_7_done:
-                final_path = os.path.join(BASE_DIR, "outputs", "ResNet18_FSCA_DermaMNIST_Best.pth")
+                final_path = PATHS["final_model"]
                 size_mb = os.path.getsize(final_path) / 1e6 if os.path.exists(final_path) else 0
                 self.model_status_label.config(
                     text=f"Model ditemukan: ResNet18_FSCA_DermaMNIST_Best.pth  ({size_mb:.1f} MB)",
@@ -327,7 +330,7 @@ class CancerSkinCADApp:
             elif "Step 7"  in step:
                 import step7_evaluation as m
                 result = m.run(self.write_terminal)
-                final = os.path.join(BASE_DIR, "outputs", "ResNet18_FSCA_DermaMNIST_Best.pth")
+                final = PATHS["final_model"]
                 if os.path.exists(final):
                     self.step_6_7_done = True
             elif "Step 8"  in step: import step8_gradcam    as m; result = m.run(self.write_terminal)

@@ -8,14 +8,17 @@ Output: outputs/inference_result.png
 """
 
 import os
-import json
 import sys
+import json
 
-OUTPUT_DIR    = os.path.join(os.path.dirname(__file__), "..", "outputs")
-META_PATH     = os.path.join(OUTPUT_DIR, "dataset_meta.json")
-CONFIG_PATH   = os.path.join(OUTPUT_DIR, "preprocess_config.json")
-FINAL_MODEL   = os.path.join(OUTPUT_DIR, "ResNet18_FSCA_DermaMNIST_Best.pth")
-RESULT_PATH   = os.path.join(OUTPUT_DIR, "inference_result.png")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from config import PATHS, DATASET
+
+OUTPUT_DIR    = PATHS["output_dir"]
+META_PATH     = PATHS["dataset_meta"]
+CONFIG_PATH   = PATHS["preprocess_config"]
+FINAL_MODEL   = PATHS["final_model"]
+RESULT_PATH   = PATHS["inference_result_chart"]
 
 
 def predict_image(image_path, log_fn):
@@ -57,8 +60,9 @@ def predict_image(image_path, log_fn):
     log_fn(f"Input citra: {os.path.basename(image_path)}")
 
     # Preprocess
+    img_size = DATASET["image_size"]
     transform = transforms.Compose([
-        transforms.Resize((28, 28)),
+        transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),
         transforms.Normalize(mean, std),
     ])
@@ -94,7 +98,7 @@ def predict_image(image_path, log_fn):
     cam, _ = grad_cam.generate(img_tensor, target_class=int(pred))
 
     # Visualisasi
-    img_disp = np.array(pil_img.resize((28, 28), Image.NEAREST)) / 255.0
+    img_disp = np.array(pil_img.resize((img_size, img_size), Image.NEAREST)) / 255.0
     _cmap    = cm_mod.colormaps["jet"] if hasattr(cm_mod, "colormaps") else plt.get_cmap("jet")
     heatmap  = _cmap(cam)[:, :, :3]
     overlay  = (0.55 * img_disp + 0.45 * heatmap).clip(0, 1)

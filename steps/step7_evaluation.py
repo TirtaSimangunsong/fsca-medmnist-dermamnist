@@ -12,16 +12,19 @@ Output: outputs/confusion_matrix.png
 """
 
 import os
-import json
 import sys
+import json
 import numpy as np
 
-OUTPUT_DIR    = os.path.join(os.path.dirname(__file__), "..", "outputs")
-META_PATH     = os.path.join(OUTPUT_DIR, "dataset_meta.json")
-CONFIG_PATH   = os.path.join(OUTPUT_DIR, "preprocess_config.json")
-FINAL_MODEL   = os.path.join(OUTPUT_DIR, "ResNet18_FSCA_DermaMNIST_Best.pth")
-REPORT_PATH   = os.path.join(OUTPUT_DIR, "evaluation_report.json")
-CM_PATH       = os.path.join(OUTPUT_DIR, "confusion_matrix.png")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from config import PATHS, DATASET
+
+OUTPUT_DIR    = PATHS["output_dir"]
+META_PATH     = PATHS["dataset_meta"]
+CONFIG_PATH   = PATHS["preprocess_config"]
+FINAL_MODEL   = PATHS["final_model"]
+REPORT_PATH   = PATHS["evaluation_report"]
+CM_PATH       = PATHS["confusion_matrix_chart"]
 
 
 def run(log_fn):
@@ -67,7 +70,7 @@ def run(log_fn):
         transforms.ToTensor(),
         transforms.Normalize(mean, std),
     ])
-    test_ds = DermaMNIST(split="test", transform=test_transform, download=True, size=28)
+    test_ds = DermaMNIST(split="test", transform=test_transform, download=DATASET["download"], size=DATASET["image_size"])
     test_loader = DataLoader(test_ds, batch_size=64, shuffle=False, num_workers=0)
 
     log_fn(f"Mengevaluasi {len(test_ds):,} sampel test...")

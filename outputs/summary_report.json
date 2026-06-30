@@ -1,9 +1,9 @@
 {
-  "accuracy": 63.2918,
-  "f1_weighted": 0.6687,
-  "f1_macro": 0.4867,
-  "auc_macro": 0.903,
+  "accuracy": 65.6359,
+  "f1_weighted": 0.6877,
+  "f1_macro": 0.4944,
+  "auc_macro": 0.8972,
   "model_mb": 42.9,
   "total_params": 11224015,
-  "chart_path": "/Users/tirtasimangunsong/Documents/GitHub/thesis-fsca-medmnist/steps/../outputs/summary_report.png"
+  "chart_path": "/Users/tirtasimangunsong/Documents/GitHub/thesis-fsca-medmnist/outputs/summary_report.png"
 }

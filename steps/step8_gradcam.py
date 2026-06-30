@@ -15,16 +15,19 @@ Output: outputs/gradcam_grid.png
 """
 
 import os
-import json
 import sys
+import json
 import numpy as np
 
-OUTPUT_DIR   = os.path.join(os.path.dirname(__file__), "..", "outputs")
-GRADCAM_DIR  = os.path.join(OUTPUT_DIR, "gradcam")
-META_PATH    = os.path.join(OUTPUT_DIR, "dataset_meta.json")
-CONFIG_PATH  = os.path.join(OUTPUT_DIR, "preprocess_config.json")
-FINAL_MODEL  = os.path.join(OUTPUT_DIR, "ResNet18_FSCA_DermaMNIST_Best.pth")
-GRID_PATH    = os.path.join(OUTPUT_DIR, "gradcam_grid.png")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from config import PATHS, DATASET, ensure_dirs
+
+OUTPUT_DIR   = PATHS["output_dir"]
+GRADCAM_DIR  = PATHS["gradcam_dir"]
+META_PATH    = PATHS["dataset_meta"]
+CONFIG_PATH  = PATHS["preprocess_config"]
+FINAL_MODEL  = PATHS["final_model"]
+GRID_PATH    = PATHS["gradcam_grid_chart"]
 
 
 # =========================================================
@@ -48,7 +51,7 @@ class GradCAM:
         self.target_layer.register_forward_hook(forward_hook)
         self.target_layer.register_full_backward_hook(backward_hook)
 
-    def generate(self, input_tensor, target_class=None):
+    def generate(self, input_tensor, target_class=None, target_size=None):
         import torch
         import torch.nn.functional as F
 
@@ -71,8 +74,10 @@ class GradCAM:
         cam = cam - cam.min()
         cam = cam / (cam.max() + 1e-8)
 
-        # Resize ke input size (28x28)
-        cam = F.interpolate(cam, size=(28, 28), mode="bilinear", align_corners=False)
+        # Resize ke input size — ambil dari config jika tidak dispesifikasikan
+        if target_size is None:
+            target_size = (DATASET["image_size"], DATASET["image_size"])
+        cam = F.interpolate(cam, size=target_size, mode="bilinear", align_corners=False)
         return cam.squeeze().cpu().numpy(), target_class
 
 
@@ -124,7 +129,7 @@ def run(log_fn):
         transforms.ToTensor(),
         transforms.Normalize(mean, std),
     ])
-    test_ds = DermaMNIST(split="test", transform=test_transform, download=True, size=28)
+    test_ds = DermaMNIST(split="test", transform=test_transform, download=DATASET["download"], size=DATASET["image_size"])
 
     # Ambil 1 sampel per kelas
     log_fn(f"\nMencari sampel representatif per kelas ({n_classes} kelas)...")

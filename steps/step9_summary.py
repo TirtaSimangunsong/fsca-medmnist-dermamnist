@@ -11,17 +11,20 @@ Output: outputs/summary_report.png
 """
 
 import os
-import json
 import sys
+import json
 import numpy as np
 
-OUTPUT_DIR   = os.path.join(os.path.dirname(__file__), "..", "outputs")
-META_PATH    = os.path.join(OUTPUT_DIR, "dataset_meta.json")
-REPORT_PATH  = os.path.join(OUTPUT_DIR, "evaluation_report.json")
-HISTORY_PATH = os.path.join(OUTPUT_DIR, "finetune_history.json")
-FINAL_MODEL  = os.path.join(OUTPUT_DIR, "ResNet18_FSCA_DermaMNIST_Best.pth")
-SUMMARY_PNG  = os.path.join(OUTPUT_DIR, "summary_report.png")
-SUMMARY_JSON = os.path.join(OUTPUT_DIR, "summary_report.json")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from config import PATHS
+
+OUTPUT_DIR   = PATHS["output_dir"]
+META_PATH    = PATHS["dataset_meta"]
+REPORT_PATH  = PATHS["evaluation_report"]
+HISTORY_PATH = PATHS["finetune_history"]
+FINAL_MODEL  = PATHS["final_model"]
+SUMMARY_PNG  = PATHS["summary_report_chart"]
+SUMMARY_JSON = PATHS["summary_json"]
 
 
 def _get_model_size_mb(path):

@@ -7,16 +7,20 @@ untuk menangani class imbalance saat training.
 """
 
 import os
+import sys
 import json
 import numpy as np
 
-OUTPUT_DIR   = os.path.join(os.path.dirname(__file__), "..", "outputs")
-META_PATH    = os.path.join(OUTPUT_DIR, "dataset_meta.json")
-CONFIG_PATH  = os.path.join(OUTPUT_DIR, "preprocess_config.json")
-SPLIT_PATH   = os.path.join(OUTPUT_DIR, "split_info.json")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from config import PATHS, DATASET, AUGMENTATION, ensure_dirs
+
+OUTPUT_DIR   = PATHS["output_dir"]
+META_PATH    = PATHS["dataset_meta"]
+CONFIG_PATH  = PATHS["preprocess_config"]
+SPLIT_PATH   = PATHS["split_info"]
 
 # Path chart yang akan ditampilkan di GUI
-CHART_PATH   = os.path.join(OUTPUT_DIR, "split_distribution.png")
+CHART_PATH   = PATHS["split_distribution_chart"]
 
 
 def run(log_fn):
@@ -45,13 +49,19 @@ def run(log_fn):
 
     mean = config["mean"]
     std  = config["std"]
+    img_size = DATASET["image_size"]
+    aug = AUGMENTATION
 
     # ----- Build transforms -----
     train_transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomVerticalFlip(p=0.5),
-        transforms.RandomRotation(degrees=15),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        transforms.RandomHorizontalFlip(p=aug["horizontal_flip_p"]),
+        transforms.RandomVerticalFlip(p=aug["vertical_flip_p"]),
+        transforms.RandomRotation(degrees=aug["rotation_degrees"]),
+        transforms.ColorJitter(
+            brightness=aug["color_jitter"]["brightness"],
+            contrast=aug["color_jitter"]["contrast"],
+            saturation=aug["color_jitter"]["saturation"],
+        ),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std),
     ])
@@ -61,9 +71,9 @@ def run(log_fn):
     ])
 
     log_fn("Memuat split resmi DermaMNIST (train / val / test)...")
-    train_ds = DermaMNIST(split="train", transform=train_transform, download=True, size=28)
-    val_ds   = DermaMNIST(split="val",   transform=eval_transform,  download=True, size=28)
-    test_ds  = DermaMNIST(split="test",  transform=eval_transform,  download=True, size=28)
+    train_ds = DermaMNIST(split="train", transform=train_transform, download=DATASET["download"], size=img_size)
+    val_ds   = DermaMNIST(split="val",   transform=eval_transform,  download=DATASET["download"], size=img_size)
+    test_ds  = DermaMNIST(split="test",  transform=eval_transform,  download=DATASET["download"], size=img_size)
 
     n_train, n_val, n_test = len(train_ds), len(val_ds), len(test_ds)
     n_total = n_train + n_val + n_test

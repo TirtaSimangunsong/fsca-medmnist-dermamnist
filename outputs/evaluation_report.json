@@ -1,63 +1,63 @@
 {
-  "accuracy": 63.2918,
-  "f1_weighted": 0.6687,
-  "f1_macro": 0.4867,
-  "auc_macro": 0.903,
+  "accuracy": 65.6359,
+  "f1_weighted": 0.6877,
+  "f1_macro": 0.4944,
+  "auc_macro": 0.8972,
   "per_class": {
     "actinic keratoses and intraepithelial carcinoma": {
-      "precision": 0.3053,
-      "recall": 0.6061,
-      "f1-score": 0.4061,
+      "precision": 0.2847,
+      "recall": 0.6212,
+      "f1-score": 0.3905,
       "support": 66.0
     },
     "basal cell carcinoma": {
-      "precision": 0.3892,
-      "recall": 0.6311,
-      "f1-score": 0.4815,
+      "precision": 0.3508,
+      "recall": 0.6505,
+      "f1-score": 0.4558,
       "support": 103.0
     },
     "benign keratosis-like lesions": {
-      "precision": 0.5183,
-      "recall": 0.3864,
-      "f1-score": 0.4427,
+      "precision": 0.4759,
+      "recall": 0.4045,
+      "f1-score": 0.4373,
       "support": 220.0
     },
     "dermatofibroma": {
-      "precision": 0.1791,
-      "recall": 0.5217,
-      "f1-score": 0.2667,
+      "precision": 0.275,
+      "recall": 0.4783,
+      "f1-score": 0.3492,
       "support": 23.0
     },
     "melanoma": {
-      "precision": 0.3103,
-      "recall": 0.6637,
-      "f1-score": 0.4229,
+      "precision": 0.3445,
+      "recall": 0.6009,
+      "f1-score": 0.4379,
       "support": 223.0
     },
     "melanocytic nevi": {
-      "precision": 0.948,
-      "recall": 0.6659,
-      "f1-score": 0.7823,
+      "precision": 0.9454,
+      "recall": 0.7099,
+      "f1-score": 0.8109,
       "support": 1341.0
     },
     "vascular lesions": {
-      "precision": 0.4561,
-      "recall": 0.8966,
-      "f1-score": 0.6047,
+      "precision": 0.4681,
+      "recall": 0.7586,
+      "f1-score": 0.5789,
       "support": 29.0
     },
     "macro avg": {
-      "precision": 0.4438,
-      "recall": 0.6245,
-      "f1-score": 0.4867,
+      "precision": 0.4492,
+      "recall": 0.6034,
+      "f1-score": 0.4944,
       "support": 2005.0
     },
     "weighted avg": {
-      "precision": 0.7641,
-      "recall": 0.6329,
-      "f1-score": 0.6687,
+      "precision": 0.7602,
+      "recall": 0.6564,
+      "f1-score": 0.6877,
       "support": 2005.0
     }
   },
-  "chart_path": "/Users/tirtasimangunsong/Documents/GitHub/thesis-fsca-medmnist/steps/../outputs/confusion_matrix.png"
+  "chart_path": "/Users/tirtasimangunsong/Documents/GitHub/thesis-fsca-medmnist/outputs/confusion_matrix.png"
 }

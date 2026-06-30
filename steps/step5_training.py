@@ -12,26 +12,26 @@ Output: outputs/checkpoint_best.pth, outputs/training_curve.png
 """
 
 import os
+import sys
 import json
 import time
 import numpy as np
 
-OUTPUT_DIR    = os.path.join(os.path.dirname(__file__), "..", "outputs")
-META_PATH     = os.path.join(OUTPUT_DIR, "dataset_meta.json")
-CONFIG_PATH   = os.path.join(OUTPUT_DIR, "preprocess_config.json")
-SPLIT_PATH    = os.path.join(OUTPUT_DIR, "split_info.json")
-CKPT_PATH     = os.path.join(OUTPUT_DIR, "checkpoint_best.pth")
-HISTORY_PATH  = os.path.join(OUTPUT_DIR, "training_history.json")
-CURVE_PATH    = os.path.join(OUTPUT_DIR, "training_curve.png")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from config import PATHS, DATASET, AUGMENTATION, TRAIN_HP
 
-# Hyperparameter default (bisa dioverride oleh Step 6)
-DEFAULT_CONFIG = {
-    "epochs":       30,
-    "batch_size":   64,
-    "lr":           1e-3,
-    "weight_decay": 1e-4,
-    "patience":     5,     # early stopping
-}
+OUTPUT_DIR    = PATHS["output_dir"]
+META_PATH     = PATHS["dataset_meta"]
+CONFIG_PATH   = PATHS["preprocess_config"]
+SPLIT_PATH    = PATHS["split_info"]
+CKPT_PATH     = PATHS["checkpoint_best"]
+HISTORY_PATH  = PATHS["training_history"]
+CURVE_PATH    = PATHS["training_curve_chart"]
+
+# Hyperparameter default kini berasal dari config.py (TRAIN_HP).
+# Tetap diekspos sebagai DEFAULT_CONFIG agar kode lama yang mereferensikan
+# nama ini (mis. step lain atau notebook) tidak rusak.
+DEFAULT_CONFIG = TRAIN_HP
 
 
 def _build_loaders(meta, config, split_info):
@@ -43,12 +43,18 @@ def _build_loaders(meta, config, split_info):
     mean = config["mean"]
     std  = config["std"]
     bs   = DEFAULT_CONFIG["batch_size"]
+    img_size = DATASET["image_size"]
+    aug = AUGMENTATION
 
     train_transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomVerticalFlip(p=0.5),
-        transforms.RandomRotation(degrees=15),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        transforms.RandomHorizontalFlip(p=aug["horizontal_flip_p"]),
+        transforms.RandomVerticalFlip(p=aug["vertical_flip_p"]),
+        transforms.RandomRotation(degrees=aug["rotation_degrees"]),
+        transforms.ColorJitter(
+            brightness=aug["color_jitter"]["brightness"],
+            contrast=aug["color_jitter"]["contrast"],
+            saturation=aug["color_jitter"]["saturation"],
+        ),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std),
     ])
@@ -57,8 +63,8 @@ def _build_loaders(meta, config, split_info):
         transforms.Normalize(mean=mean, std=std),
     ])
 
-    train_ds = DermaMNIST(split="train", transform=train_transform, download=True, size=28)
-    val_ds   = DermaMNIST(split="val",   transform=eval_transform,  download=True, size=28)
+    train_ds = DermaMNIST(split="train", transform=train_transform, download=DATASET["download"], size=img_size)
+    val_ds   = DermaMNIST(split="val",   transform=eval_transform,  download=DATASET["download"], size=img_size)
 
     # WeightedRandomSampler — atasi class imbalance
     sample_weights = torch.tensor(split_info["sample_weights"], dtype=torch.float)

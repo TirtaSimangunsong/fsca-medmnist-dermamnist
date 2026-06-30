@@ -20,11 +20,15 @@ Disimpan ke outputs/model_summary.txt untuk dokumentasi.
 """
 
 import os
+import sys
 import json
 
-OUTPUT_DIR   = os.path.join(os.path.dirname(__file__), "..", "outputs")
-META_PATH    = os.path.join(OUTPUT_DIR, "dataset_meta.json")
-SUMMARY_PATH = os.path.join(OUTPUT_DIR, "model_summary.txt")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from config import PATHS, MODEL_CONFIG
+
+OUTPUT_DIR   = PATHS["output_dir"]
+META_PATH    = PATHS["dataset_meta"]
+SUMMARY_PATH = PATHS["model_summary"]
 
 
 # =========================================================
@@ -74,7 +78,8 @@ class FSCAModule(nn.Module):
     CA dan SA dihitung secara PARALEL lalu digabungkan (fused).
     Output = X * CA * SA   — bukan sekuensial X*(CA*SA)
     """
-    def __init__(self, in_channels, reduction=16, spatial_kernel=7):
+    def __init__(self, in_channels, reduction=MODEL_CONFIG["fsca_reduction"],
+                 spatial_kernel=MODEL_CONFIG["fsca_spatial_kernel"]):
         super().__init__()
         self.ca = ChannelAttention(in_channels, reduction)
         self.sa = SpatialAttention(spatial_kernel)
@@ -90,7 +95,7 @@ class FSCAModule(nn.Module):
 # MODEL UTAMA: ResNet-18 + FSCA
 # =========================================================
 class ResNet18_FSCA(nn.Module):
-    def __init__(self, n_classes=7, pretrained=False):
+    def __init__(self, n_classes=7, pretrained=MODEL_CONFIG["pretrained"]):
         super().__init__()
         from torchvision.models import resnet18, ResNet18_Weights
         weights = ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
@@ -110,7 +115,7 @@ class ResNet18_FSCA(nn.Module):
         self.fsca4 = FSCAModule(512)
 
         self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.dropout = nn.Dropout(p=0.4)
+        self.dropout = nn.Dropout(p=MODEL_CONFIG["dropout_p"])
         self.fc      = nn.Linear(512, n_classes)
 
     def forward(self, x):
@@ -137,7 +142,7 @@ class ResNet18_FSCA(nn.Module):
 # =========================================================
 # ENTRY POINT
 # =========================================================
-def build_model(n_classes=7, pretrained=False):
+def build_model(n_classes=7, pretrained=MODEL_CONFIG["pretrained"]):
     """Factory function — dipanggil oleh step lain."""
     return ResNet18_FSCA(n_classes=n_classes, pretrained=pretrained)
 
