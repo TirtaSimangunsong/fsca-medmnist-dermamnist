@@ -28,11 +28,6 @@ import os
 # =========================================================
 # PATH DASAR
 # =========================================================
-# Asumsi struktur folder:
-#   project_root/
-#     ├── config.py          <- file ini
-#     ├── steps/              <- step1_extract.py, step2_preprocess.py, dst.
-#     └── outputs/            <- semua hasil (json, png, checkpoint)
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR   = os.path.join(PROJECT_ROOT, "outputs")
 GRADCAM_DIR  = os.path.join(OUTPUT_DIR, "gradcam")
