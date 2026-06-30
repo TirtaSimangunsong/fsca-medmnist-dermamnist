@@ -321,21 +321,23 @@ class CancerSkinCADApp:
         error  = None
 
         try:
-            if   "Step 1"  in step: import step1_extract    as m; result = m.run(self.write_terminal)
-            elif "Step 2"  in step: import step2_preprocess as m; result = m.run(self.write_terminal)
-            elif "Step 3"  in step: import step3_split      as m; result = m.run(self.write_terminal)
-            elif "Step 4"  in step: import step4_model      as m; result = m.run(self.write_terminal)
-            elif "Step 5"  in step: import step5_training   as m; result = m.run(self.write_terminal)
-            elif "Step 6"  in step: import step6_finetune   as m; result = m.run(self.write_terminal)
-            elif "Step 7"  in step:
+            if   step == "Step 1: Ekstraksi":     import step1_extract    as m; result = m.run(self.write_terminal)
+            elif step == "Step 2: Preprocessing": import step2_preprocess as m; result = m.run(self.write_terminal)
+            elif step == "Step 3: Split Data":    import step3_split      as m; result = m.run(self.write_terminal)
+            elif step == "Step 4: Model FSCA":    import step4_model      as m; result = m.run(self.write_terminal)
+            elif step == "Step 5: Training":      import step5_training   as m; result = m.run(self.write_terminal)
+            elif step == "Step 6: Finetune":      import step6_finetune   as m; result = m.run(self.write_terminal)
+            elif step == "Step 7: Evaluation":
                 import step7_evaluation as m
                 result = m.run(self.write_terminal)
                 final = PATHS["final_model"]
                 if os.path.exists(final):
                     self.step_6_7_done = True
-            elif "Step 8"  in step: import step8_gradcam    as m; result = m.run(self.write_terminal)
-            elif "Step 9"  in step: import step9_summary    as m; result = m.run(self.write_terminal)
-            elif "Step 10" in step: import step10_inference  as m; result = m.run(self.write_terminal)
+            elif step == "Step 8: Grad-CAM":      import step8_gradcam    as m; result = m.run(self.write_terminal)
+            elif step == "Step 9: Summary":       import step9_summary    as m; result = m.run(self.write_terminal)
+            elif step == "Step 10: Inference":    import step10_inference as m; result = m.run(self.write_terminal)
+            else:
+                self.write_terminal(f"ERROR internal: step tidak dikenali -> '{step}'")
 
         except Exception as e:
             import traceback
