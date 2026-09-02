@@ -130,7 +130,7 @@ FINETUNE_HP = {
 # =========================================================
 MODEL_CONFIG = {
     "backbone":        "resnet18",
-    "pretrained":       False,   # True jika ingin mulai dari ImageNet weights
+    "pretrained": True,   
     "dropout_p":        0.4,
     "fsca_reduction":   16,      # reduction ratio untuk ChannelAttention MLP
     "fsca_spatial_kernel": 7,    # kernel size untuk SpatialAttention conv

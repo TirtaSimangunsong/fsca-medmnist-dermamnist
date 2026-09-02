@@ -74,21 +74,27 @@ class SpatialAttention(nn.Module):
 
 class FSCAModule(nn.Module):
     """
-    Fused Spatial-Channel Attention.
-    CA dan SA dihitung secara PARALEL lalu digabungkan (fused).
-    Output = X * CA * SA   — bukan sekuensial X*(CA*SA)
+    True fused version: CA dan SA dihitung paralel, di-broadcast ke shape sama,
+    di-concatenate di dimensi channel, lalu disaring conv 1x1 (feature selector).
     """
-    def __init__(self, in_channels, reduction=MODEL_CONFIG["fsca_reduction"],
-                 spatial_kernel=MODEL_CONFIG["fsca_spatial_kernel"]):
+    def __init__(self, in_channels, reduction=16, spatial_kernel=7):
         super().__init__()
         self.ca = ChannelAttention(in_channels, reduction)
         self.sa = SpatialAttention(spatial_kernel)
+        self.fuse = nn.Conv2d(in_channels * 2, in_channels, kernel_size=1, bias=False)
+        self.bn = nn.BatchNorm2d(in_channels)
 
     def forward(self, x):
-        ca_weight = self.ca(x)    # (B, C, 1, 1)
-        sa_weight = self.sa(x)    # (B, 1, H, W)
-        # Fused multiplication (simultan, bukan berurutan)
-        return x * ca_weight * sa_weight
+        B, C, H, W = x.shape
+        ca_weight = self.ca(x).expand(-1, -1, H, W)   # (B, C, H, W)
+        sa_weight = self.sa(x).expand(-1, C, -1, -1)   # (B, C, H, W)
+
+        ca_feat = x * ca_weight
+        sa_feat = x * sa_weight
+
+        fused = torch.cat([ca_feat, sa_feat], dim=1)   # (B, 2C, H, W)
+        out = self.fuse(fused)                          # (B, C, H, W) via conv 1x1
+        return F.relu(self.bn(out) + x)                 # residual connection
 
 
 # =========================================================
@@ -101,8 +107,15 @@ class ResNet18_FSCA(nn.Module):
         weights = ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
         base = resnet18(weights=weights)
 
-        # Simpan semua layer ResNet kecuali avgpool & fc
-        self.layer0 = nn.Sequential(base.conv1, base.bn1, base.relu, base.maxpool)
+        # STEM MODIFICATION untuk citra kecil (28x28)
+        # Ganti conv1 7x7/stride2 -> 3x3/stride1, dan buang maxpool
+        new_conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        if pretrained:
+            # Inisialisasi dari pretrained conv1 (rata-ratakan kernel 7x7 ke tengah 3x3)
+            with torch.no_grad():
+                new_conv1.weight.copy_(base.conv1.weight[:, :, 2:5, 2:5])
+        self.layer0 = nn.Sequential(new_conv1, base.bn1, base.relu)  # maxpool DIBUANG
+
         self.layer1 = base.layer1   # 64  channels
         self.layer2 = base.layer2   # 128 channels
         self.layer3 = base.layer3   # 256 channels

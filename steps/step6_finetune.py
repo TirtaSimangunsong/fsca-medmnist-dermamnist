@@ -102,13 +102,12 @@ def run(log_fn):
     train_ds = DermaMNIST(split="train", transform=train_transform, download=DATASET["download"], size=img_size)
     val_ds   = DermaMNIST(split="val",   transform=eval_transform,  download=DATASET["download"], size=img_size)
 
-    sample_weights = torch.tensor(split_info["sample_weights"], dtype=torch.float)
-    sampler = WeightedRandomSampler(sample_weights, len(sample_weights), replacement=True)
-
-    train_loader = DataLoader(train_ds, batch_size=bs, sampler=sampler, num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, num_workers=0)
     val_loader   = DataLoader(val_ds,   batch_size=bs, shuffle=False,   num_workers=0)
 
-    criterion = nn.CrossEntropyLoss(label_smoothing=FINETUNE_HP["label_smoothing"])
+    class_weights_tensor = torch.tensor(split_info["class_weights"], dtype=torch.float).to(device)
+    criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
+    
     optimizer = AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=FINETUNE_HP["lr"],

@@ -81,7 +81,7 @@ def run(log_fn):
     log_fn(f"Val   : {n_val:,}  ({100*n_val/n_total:.1f}%)")
     log_fn(f"Test  : {n_test:,}  ({100*n_test/n_total:.1f}%)")
 
-    # ----- Hitung class weights untuk WeightedRandomSampler -----
+    # ----- Hitung class weights -----
     labels = np.array([train_ds[i][1].item() for i in range(n_train)])
     class_map = meta["class_map"]
     n_classes = meta["n_classes"]
@@ -89,8 +89,11 @@ def run(log_fn):
     class_counts = np.bincount(labels, minlength=n_classes)
     class_weights = 1.0 / (class_counts + 1e-6)
     class_weights /= class_weights.sum()   # normalize
-
     sample_weights = class_weights[labels]
+
+    # TAMBAHAN: hitung loss_class_weights (skala berbeda, untuk CrossEntropyLoss)
+    loss_class_weights = 1.0 / (class_counts + 1e-6)
+    loss_class_weights = loss_class_weights / loss_class_weights.mean()  # rata-rata = 1
 
     log_fn("")
     log_fn("Distribusi kelas di Training Set:")
@@ -140,13 +143,14 @@ def run(log_fn):
 
     # ----- Simpan info split -----
     split_info = {
-        "n_train":        n_train,
-        "n_val":          n_val,
-        "n_test":         n_test,
-        "class_counts":   class_counts.tolist(),
-        "class_weights":  class_weights.tolist(),
-        "sample_weights": sample_weights.tolist(),
-        "chart_path":     CHART_PATH,
+    "n_train":             n_train,
+    "n_val":                n_val,
+    "n_test":               n_test,
+    "class_counts":         class_counts.tolist(),
+    "class_weights":        class_weights.tolist(),
+    "sample_weights":       sample_weights.tolist(),   # boleh dibiarkan tersimpan meski tak dipakai lagi
+    "loss_class_weights":   loss_class_weights.tolist(),  # <- key yang dicari Step 5
+    "chart_path":           CHART_PATH,
     }
     with open(SPLIT_PATH, "w") as f:
         json.dump(split_info, f, indent=2)

@@ -66,11 +66,8 @@ def _build_loaders(meta, config, split_info):
     train_ds = DermaMNIST(split="train", transform=train_transform, download=DATASET["download"], size=img_size)
     val_ds   = DermaMNIST(split="val",   transform=eval_transform,  download=DATASET["download"], size=img_size)
 
-    # WeightedRandomSampler — atasi class imbalance
-    sample_weights = torch.tensor(split_info["sample_weights"], dtype=torch.float)
-    sampler = WeightedRandomSampler(sample_weights, num_samples=len(sample_weights), replacement=True)
 
-    train_loader = DataLoader(train_ds, batch_size=bs, sampler=sampler, num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, num_workers=0)    
     val_loader   = DataLoader(val_ds,   batch_size=bs, shuffle=False,  num_workers=0)
     return train_loader, val_loader
 
@@ -155,7 +152,8 @@ def run(log_fn, hp_override=None):
     log_fn(f"  Val batches   : {len(val_loader)}")
 
     # Loss (CrossEntropy standard — sampler sudah handle imbalance)
-    criterion = nn.CrossEntropyLoss()
+    class_weights_tensor = torch.tensor(split_info["loss_class_weights"], dtype=torch.float).to(device)
+    criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
     optimizer = AdamW(model.parameters(), lr=hp["lr"], weight_decay=hp["weight_decay"])
     scheduler = CosineAnnealingLR(optimizer, T_max=hp["epochs"])
 

@@ -7029,5 +7029,14 @@
     0.0065423867518345615,
     0.0065423867518345615
   ],
+  "loss_class_weights": [
+    0.942648887226601,
+    0.5986739460491364,
+    0.2794849765290363,
+    2.6865493067970574,
+    0.27589723614174155,
+    0.045796707262841935,
+    2.1709489399935853
+  ],
   "chart_path": "/Users/tirtasimangunsong/Documents/GitHub/thesis-fsca-medmnist/outputs/split_distribution.png"
 }
