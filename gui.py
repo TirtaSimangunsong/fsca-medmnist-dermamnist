@@ -1,8 +1,5 @@
 """
 gui.py — Klasifikasi Kanker Kulit
-=============================================
-GUI terintegrasi penuh dengan 10 Step ML pipeline FSCA.
-Author : Tirta (01082230021)
 """
 
 import tkinter as tk
