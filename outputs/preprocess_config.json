@@ -1,0 +1,25 @@
+{
+  "mean": [
+    0.7631127238273621,
+    0.5380882620811462,
+    0.5613881945610046
+  ],
+  "std": [
+    0.1366051286458969,
+    0.15425384044647217,
+    0.16921602189540863
+  ],
+  "train_aug": [
+    "RandomHorizontalFlip(p=0.5)",
+    "RandomVerticalFlip(p=0.5)",
+    "RandomRotation(degrees=15)",
+    "ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2)",
+    "ToTensor()",
+    "Normalize(mean=[0.7631, 0.5381, 0.5614], std=[0.1366, 0.1543, 0.1692])"
+  ],
+  "val_aug": [
+    "ToTensor()",
+    "Normalize(mean=[0.7631, 0.5381, 0.5614], std=[0.1366, 0.1543, 0.1692])"
+  ],
+  "image_size": 28
+}

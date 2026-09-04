@@ -18,7 +18,7 @@ import time
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import PATHS, DATASET, AUGMENTATION, TRAIN_HP
+from config import PATHS, DATASET, AUGMENTATION, TRAIN_HP, MODEL_CONFIG
 
 OUTPUT_DIR    = PATHS["output_dir"]
 META_PATH     = PATHS["dataset_meta"]
@@ -154,7 +154,26 @@ def run(log_fn, hp_override=None):
     # Loss (CrossEntropy standard — sampler sudah handle imbalance)
     class_weights_tensor = torch.tensor(split_info["loss_class_weights"], dtype=torch.float).to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
-    optimizer = AdamW(model.parameters(), lr=hp["lr"], weight_decay=hp["weight_decay"])
+    # step5_training.py, di dalam run(), setelah build_model():
+
+    # TAMBAHAN: kalau pakai pretrained weights, freeze backbone dulu.
+    # Step 5 = Phase 1 (head-only training, LR tinggi aman karena cuma sedikit parameter).
+    # Step 6 = Phase 2 (partial unfreeze, LR kecil) — sudah ada di kode kamu.
+    if MODEL_CONFIG["pretrained"]:
+        for name, param in model.named_parameters():
+            # hanya fc (classifier) dan semua modul FSCA yang trainable
+            param.requires_grad = ("fc" in name) or ("fsca" in name)
+        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        log_fn(f"Mode: Phase 1 (frozen backbone). Trainable params: {trainable:,}")
+
+        # optimizer juga harus difilter, jangan kirim semua parameter
+        optimizer = AdamW(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=hp["lr"], weight_decay=hp["weight_decay"]
+        )
+    else:
+        optimizer = AdamW(model.parameters(), lr=hp["lr"], weight_decay=hp["weight_decay"])
+
     scheduler = CosineAnnealingLR(optimizer, T_max=hp["epochs"])
 
     history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
