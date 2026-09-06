@@ -12,8 +12,8 @@
   "train_aug": [
     "RandomHorizontalFlip(p=0.5)",
     "RandomVerticalFlip(p=0.5)",
-    "RandomRotation(degrees=15)",
-    "ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2)",
+    "RandomRotation(degrees=180)",
+    "ColorJitter(brightness=0.25, contrast=0.25, saturation=0.25)",
     "ToTensor()",
     "Normalize(mean=[0.7631, 0.5381, 0.5614], std=[0.1366, 0.1543, 0.1692])"
   ],

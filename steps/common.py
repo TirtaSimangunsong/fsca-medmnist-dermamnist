@@ -258,6 +258,33 @@ def build_dataloaders(mean, std, batch_size, n_classes, splits=("train", "val"),
 
     return loaders, info
 
+def ensure_ssl_certificates():
+    """
+    macOS: Python tidak memakai keychain sistem, sehingga unduhan HTTPS
+    (bobot ImageNet torchvision, dataset medmnist dari Zenodo) gagal dengan
+    CERTIFICATE_VERIFY_FAILED. Arahkan ke CA bundle certifi.
+
+    Ini tetap MEMVERIFIKASI sertifikat dengan benar - bukan mematikan
+    verifikasi seperti trik ssl._create_unverified_context yang banyak
+    beredar di forum.
+    """
+    try:
+        import certifi
+    except ImportError:
+        return False
+
+    path = certifi.where()
+    os.environ.setdefault("SSL_CERT_FILE", path)
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", path)
+    try:
+        import ssl
+        ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=path)
+    except Exception:
+        pass
+    return True
+
+
+ensure_ssl_certificates()
 
 # =========================================================
 # MIXUP / CUTMIX
