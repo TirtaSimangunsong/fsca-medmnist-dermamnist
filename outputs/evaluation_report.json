@@ -1,200 +1,61 @@
 {
-  "model_path": "/Users/tirtasimangunsong/Documents/GitHub/thesis-fsca-medmnist/outputs/ResNet18_FSCA_DermaMNIST_Best.pth",
-  "attention": "fsca",
-  "device": "mps",
-  "tta": true,
-  "logit_adjustment_tau": 0.75,
-  "tau_sweep_val": [
-    {
-      "tau": 0.0,
-      "acc": 14.955134596211368,
-      "balanced_acc": 20.715083595645652,
-      "f1_macro": 0.09896093768865703
-    },
-    {
-      "tau": 0.25,
-      "acc": 6.281156530408774,
-      "balanced_acc": 20.255536180594728,
-      "f1_macro": 0.05387947403959
-    },
-    {
-      "tau": 0.5,
-      "acc": 4.3868394815553335,
-      "balanced_acc": 18.75386518243661,
-      "f1_macro": 0.036989324640436035
-    },
-    {
-      "tau": 0.75,
-      "acc": 4.3868394815553335,
-      "balanced_acc": 22.007754150611294,
-      "f1_macro": 0.041426107690308335
-    },
-    {
-      "tau": 1.0,
-      "acc": 3.290129611166501,
-      "balanced_acc": 18.35307549593264,
-      "f1_macro": 0.03873530684434479
-    },
-    {
-      "tau": 1.25,
-      "acc": 2.4925224327018944,
-      "balanced_acc": 16.280148423005564,
-      "f1_macro": 0.04132716026519501
-    },
-    {
-      "tau": 1.5,
-      "acc": 1.9940179461615155,
-      "balanced_acc": 16.388373531230673,
-      "f1_macro": 0.042525054577931716
-    }
-  ],
-  "accuracy": 3.7406,
-  "balanced_accuracy": 17.7513,
-  "f1_weighted": 0.0086,
-  "f1_macro": 0.0366,
-  "auc_macro": 0.5546,
-  "without_tta_or_adjustment": {
-    "accuracy": 18.4539,
-    "balanced_accuracy": 20.2556,
-    "f1_macro": 0.104,
-    "auc_macro": 0.5616
-  },
-  "confusion_matrix": [
-    [
-      49,
-      6,
-      0,
-      0,
-      0,
-      0,
-      11
-    ],
-    [
-      43,
-      16,
-      0,
-      2,
-      0,
-      0,
-      42
-    ],
-    [
-      108,
-      46,
-      0,
-      4,
-      0,
-      0,
-      62
-    ],
-    [
-      12,
-      4,
-      0,
-      0,
-      0,
-      0,
-      7
-    ],
-    [
-      77,
-      78,
-      0,
-      2,
-      0,
-      0,
-      66
-    ],
-    [
-      165,
-      527,
-      0,
-      185,
-      0,
-      0,
-      464
-    ],
-    [
-      5,
-      11,
-      0,
-      3,
-      0,
-      0,
-      10
-    ]
-  ],
-  "class_names": [
-    "actinic keratoses and intraepithelial carcinoma",
-    "basal cell carcinoma",
-    "benign keratosis-like lesions",
-    "dermatofibroma",
-    "melanoma",
-    "melanocytic nevi",
-    "vascular lesions"
-  ],
-  "class_counts_train": [
-    228,
-    359,
-    769,
-    80,
-    779,
-    4693,
-    99
-  ],
+  "accuracy": 73.7656,
+  "f1_weighted": 0.7424,
+  "f1_macro": 0.5384,
+  "auc_macro": 0.928,
   "per_class": {
     "actinic keratoses and intraepithelial carcinoma": {
-      "precision": 0.1068,
-      "recall": 0.7424,
-      "f1-score": 0.1867,
+      "precision": 0.3673,
+      "recall": 0.5455,
+      "f1-score": 0.439,
       "support": 66.0
     },
     "basal cell carcinoma": {
-      "precision": 0.0233,
-      "recall": 0.1553,
-      "f1-score": 0.0405,
+      "precision": 0.4733,
+      "recall": 0.6019,
+      "f1-score": 0.5299,
       "support": 103.0
     },
     "benign keratosis-like lesions": {
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1-score": 0.0,
+      "precision": 0.5109,
+      "recall": 0.4273,
+      "f1-score": 0.4653,
       "support": 220.0
     },
     "dermatofibroma": {
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1-score": 0.0,
+      "precision": 0.3077,
+      "recall": 0.3478,
+      "f1-score": 0.3265,
       "support": 23.0
     },
     "melanoma": {
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1-score": 0.0,
+      "precision": 0.4274,
+      "recall": 0.4484,
+      "f1-score": 0.4376,
       "support": 223.0
     },
     "melanocytic nevi": {
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1-score": 0.0,
+      "precision": 0.8979,
+      "recall": 0.8591,
+      "f1-score": 0.878,
       "support": 1341.0
     },
     "vascular lesions": {
-      "precision": 0.0151,
-      "recall": 0.3448,
-      "f1-score": 0.0289,
+      "precision": 0.551,
+      "recall": 0.931,
+      "f1-score": 0.6923,
       "support": 29.0
     },
     "macro avg": {
-      "precision": 0.0207,
-      "recall": 0.1775,
-      "f1-score": 0.0366,
+      "precision": 0.5051,
+      "recall": 0.5944,
+      "f1-score": 0.5384,
       "support": 2005.0
     },
     "weighted avg": {
-      "precision": 0.0049,
-      "recall": 0.0374,
-      "f1-score": 0.0086,
+      "precision": 0.752,
+      "recall": 0.7377,
+      "f1-score": 0.7424,
       "support": 2005.0
     }
   },
