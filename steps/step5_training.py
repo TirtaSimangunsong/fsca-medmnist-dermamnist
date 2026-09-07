@@ -142,8 +142,15 @@ def run(log_fn, hp_override=None):
     device = torch.device("cpu")
     log_fn(f"Device: {device}")
 
-    model = build_model(n_classes=n_classes, pretrained=False).to(device)
-    log_fn(f"Model berhasil diinisialisasi.")
+    # PERBAIKAN BUG FATAL
+    # -------------------
+    # Sebelumnya baris ini adalah `pretrained=False`, padahal
+    # MODEL_CONFIG["pretrained"] bernilai True. Model karenanya dibangun
+    # dengan bobot ACAK, lalu blok di bawah membekukan seluruh backbone acak
+    # itu. layer1-layer4 tidak pernah dilatih sama sekali, sehingga classifier
+    # bekerja di atas proyeksi acak.
+    model = build_model(n_classes=n_classes, pretrained=MODEL_CONFIG["pretrained"]).to(device)
+    log_fn(f"Model berhasil diinisialisasi (pretrained={MODEL_CONFIG['pretrained']}).")
 
     # DataLoaders
     log_fn("Memuat DataLoader...")
@@ -151,28 +158,21 @@ def run(log_fn, hp_override=None):
     log_fn(f"  Train batches : {len(train_loader)}")
     log_fn(f"  Val batches   : {len(val_loader)}")
 
-    # Loss (CrossEntropy standard — sampler sudah handle imbalance)
+    # Loss
     class_weights_tensor = torch.tensor(split_info["loss_class_weights"], dtype=torch.float).to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
-    # step5_training.py, di dalam run(), setelah build_model():
 
-    # TAMBAHAN: kalau pakai pretrained weights, freeze backbone dulu.
-    # Step 5 = Phase 1 (head-only training, LR tinggi aman karena cuma sedikit parameter).
-    # Step 6 = Phase 2 (partial unfreeze, LR kecil) — sudah ada di kode kamu.
-    if MODEL_CONFIG["pretrained"]:
-        for name, param in model.named_parameters():
-            # hanya fc (classifier) dan semua modul FSCA yang trainable
-            param.requires_grad = ("fc" in name) or ("fsca" in name)
-        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        log_fn(f"Mode: Phase 1 (frozen backbone). Trainable params: {trainable:,}")
+    # PERBAIKAN BUG FATAL (lanjutan)
+    # -------------------------------
+    # Blok freeze backbone dihapus. Skema "Phase 1 head-only" itu masuk akal
+    # kalau backbone benar-benar berbobot ImageNet DAN stem-nya tidak diganti.
+    # Di sini stem sudah diganti jadi conv 3x3 stride 1 dan diinisialisasi
+    # ulang, sehingga membekukan backbone justru menghalangi fitur menyesuaikan
+    # diri. Seluruh model dilatih.
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    log_fn(f"Melatih seluruh model. Trainable params: {trainable:,}")
 
-        # optimizer juga harus difilter, jangan kirim semua parameter
-        optimizer = AdamW(
-            filter(lambda p: p.requires_grad, model.parameters()),
-            lr=hp["lr"], weight_decay=hp["weight_decay"]
-        )
-    else:
-        optimizer = AdamW(model.parameters(), lr=hp["lr"], weight_decay=hp["weight_decay"])
+    optimizer = AdamW(model.parameters(), lr=hp["lr"], weight_decay=hp["weight_decay"])
 
     scheduler = CosineAnnealingLR(optimizer, T_max=hp["epochs"])
 

@@ -105,9 +105,23 @@ def run(log_fn):
     train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, num_workers=0)
     val_loader   = DataLoader(val_ds,   batch_size=bs, shuffle=False,   num_workers=0)
 
-    class_weights_tensor = torch.tensor(split_info["class_weights"], dtype=torch.float).to(device)
-    criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
-    
+    # PERBAIKAN 1 — kunci bobot yang salah
+    # -------------------------------------
+    # Sebelumnya memakai split_info["class_weights"], yang dinormalisasi agar
+    # JUMLAHnya 1 (rata-rata ~0.14). Step 5 memakai "loss_class_weights" yang
+    # dinormalisasi agar RATA-RATAnya 1. Akibatnya loss Phase 2 terskala ~7x
+    # lebih kecil dari Phase 1; digabung LR yang sudah 10x lebih kecil,
+    # fine-tuning praktis tidak menggerakkan bobot sama sekali.
+    class_weights_tensor = torch.tensor(split_info["loss_class_weights"], dtype=torch.float).to(device)
+
+    # PERBAIKAN 2 — label smoothing tidak pernah dipasang
+    # ---------------------------------------------------
+    # FINETUNE_HP["label_smoothing"] ada di config dan disebut di docstring,
+    # tetapi tidak pernah diteruskan ke nn.CrossEntropyLoss.
+    criterion = nn.CrossEntropyLoss(
+        weight=class_weights_tensor,
+        label_smoothing=FINETUNE_HP["label_smoothing"],
+    )
     optimizer = AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=FINETUNE_HP["lr"],

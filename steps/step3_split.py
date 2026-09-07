@@ -91,9 +91,37 @@ def run(log_fn):
     class_weights /= class_weights.sum()   # normalize
     sample_weights = class_weights[labels]
 
-    # TAMBAHAN: hitung loss_class_weights (skala berbeda, untuk CrossEntropyLoss)
-    loss_class_weights = 1.0 / (class_counts + 1e-6)
+    # ----- Bobot loss untuk CrossEntropyLoss -----
+    # PERUBAHAN: invers penuh (1/n) -> akar invers (1/sqrt(n)).
+    #
+    # Invers penuh memberi rasio bobot 58x antara df (80 sampel) dan
+    # nv (4.693 sampel). Hukuman sebesar itu membuat model berhenti
+    # mempertaruhkan tebakan kelas mayoritas: pada run sebelumnya nv hanya
+    # mendapat recall 0.65 padahal precision-nya 0.92, sementara vasc
+    # mendapat recall 0.90 dengan precision 0.17. Akurasi keseluruhan
+    # turun ke 58.3% karena itu.
+    #
+    # Akar invers menurunkan rasio menjadi ~7.6x - tetap membantu kelas
+    # minoritas, tanpa menggeser batas keputusan sejauh itu.
+    #
+    # Ganti WEIGHT_MODE untuk membandingkan kedua strategi di BAB IV:
+    #   "sqrt"    -> 1/sqrt(n)  (kompromi, DEFAULT)
+    #   "inverse" -> 1/n        (WCE penuh, perilaku sebelumnya)
+    #   "none"    -> bobot seragam
+    WEIGHT_MODE = "sqrt"
+
+    if WEIGHT_MODE == "inverse":
+        loss_class_weights = 1.0 / (class_counts + 1e-6)
+    elif WEIGHT_MODE == "sqrt":
+        loss_class_weights = 1.0 / np.sqrt(class_counts + 1e-6)
+    elif WEIGHT_MODE == "none":
+        loss_class_weights = np.ones(n_classes, dtype=float)
+    else:
+        raise ValueError(f"WEIGHT_MODE tidak dikenal: {WEIGHT_MODE}")
+
     loss_class_weights = loss_class_weights / loss_class_weights.mean()  # rata-rata = 1
+    log_fn(f"Strategi bobot loss: {WEIGHT_MODE}  "
+           f"(rasio maks/min = {loss_class_weights.max()/loss_class_weights.min():.1f}x)")
 
     log_fn("")
     log_fn("Distribusi kelas di Training Set:")

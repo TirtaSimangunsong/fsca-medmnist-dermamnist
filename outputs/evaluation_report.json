@@ -1,61 +1,61 @@
 {
-  "accuracy": 58.3042,
-  "f1_weighted": 0.6273,
-  "f1_macro": 0.3613,
-  "auc_macro": 0.8801,
+  "accuracy": 73.7656,
+  "f1_weighted": 0.7424,
+  "f1_macro": 0.5384,
+  "auc_macro": 0.928,
   "per_class": {
     "actinic keratoses and intraepithelial carcinoma": {
-      "precision": 0.1872,
-      "recall": 0.5303,
-      "f1-score": 0.2767,
+      "precision": 0.3673,
+      "recall": 0.5455,
+      "f1-score": 0.439,
       "support": 66.0
     },
     "basal cell carcinoma": {
-      "precision": 0.2785,
-      "recall": 0.5922,
-      "f1-score": 0.3789,
+      "precision": 0.4733,
+      "recall": 0.6019,
+      "f1-score": 0.5299,
       "support": 103.0
     },
     "benign keratosis-like lesions": {
-      "precision": 0.3717,
-      "recall": 0.3227,
-      "f1-score": 0.3455,
+      "precision": 0.5109,
+      "recall": 0.4273,
+      "f1-score": 0.4653,
       "support": 220.0
     },
     "dermatofibroma": {
-      "precision": 0.0588,
-      "recall": 0.087,
-      "f1-score": 0.0702,
+      "precision": 0.3077,
+      "recall": 0.3478,
+      "f1-score": 0.3265,
       "support": 23.0
     },
     "melanoma": {
-      "precision": 0.3759,
-      "recall": 0.4619,
-      "f1-score": 0.4145,
+      "precision": 0.4274,
+      "recall": 0.4484,
+      "f1-score": 0.4376,
       "support": 223.0
     },
     "melanocytic nevi": {
-      "precision": 0.9227,
-      "recall": 0.6495,
-      "f1-score": 0.7624,
+      "precision": 0.8979,
+      "recall": 0.8591,
+      "f1-score": 0.878,
       "support": 1341.0
     },
     "vascular lesions": {
-      "precision": 0.1667,
-      "recall": 0.8966,
-      "f1-score": 0.2811,
+      "precision": 0.551,
+      "recall": 0.931,
+      "f1-score": 0.6923,
       "support": 29.0
     },
     "macro avg": {
-      "precision": 0.3374,
-      "recall": 0.5057,
-      "f1-score": 0.3613,
+      "precision": 0.5051,
+      "recall": 0.5944,
+      "f1-score": 0.5384,
       "support": 2005.0
     },
     "weighted avg": {
-      "precision": 0.7233,
-      "recall": 0.583,
-      "f1-score": 0.6273,
+      "precision": 0.752,
+      "recall": 0.7377,
+      "f1-score": 0.7424,
       "support": 2005.0
     }
   },
