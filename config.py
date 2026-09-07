@@ -177,7 +177,13 @@ TRAIN_HP = {
     "weight_decay":      1e-2,    # turun dari 5e-2 (tersangka divergensi)
     "warmup_epochs":     5,
     "label_smoothing":   0.1,
-    "grad_clip":         1.0,
+    # DIUKUR, bukan ditebak: norm gradien khas model ini 11-15 (lihat
+    # diagnose_step.py). Nilai 1.0 sebelumnya memotong SETIAP langkah ~14x,
+    # bukan sekadar menangkap lonjakan. Akibatnya sqrt(v_hat) di AdamW
+    # tenggelam mendekati eps dan update conv1 meledak.
+    # 0.0 = nonaktif. Kalau ingin penjaga lonjakan, pakai 30.0 (2x norm khas).
+    "grad_clip":         0.0,
+    "adam_eps":          1e-6,    # 1e-8 terlalu kecil untuk float32 di MPS
     "ema_decay":         0.0,     # MATIKAN dulu; nyalakan setelah baseline stabil
     "patience":          20,
     "monitor":           "balanced_acc",   # acc | balanced_acc | auc
@@ -201,7 +207,8 @@ FINETUNE_HP = {
     "weight_decay":    1e-2,
     "warmup_epochs":   0,
     "label_smoothing": 0.1,
-    "grad_clip":       1.0,
+    "grad_clip":       0.0,     # sama alasannya dengan TRAIN_HP
+    "adam_eps":        1e-6,
     "ema_decay":       0.999,
     "patience":        15,
     "monitor":         "balanced_acc",

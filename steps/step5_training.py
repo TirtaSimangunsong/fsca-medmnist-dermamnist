@@ -128,7 +128,8 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
     # ---------- Optimizer & scheduler ----------
     optimizer = common.build_optimizer(
         model, lr=hp["lr"], weight_decay=hp["weight_decay"],
-        backbone_lr_mult=hp.get("backbone_lr_mult", 0.1), log_fn=log_fn,
+        backbone_lr_mult=hp.get("backbone_lr_mult", 0.1),
+        eps=hp.get("adam_eps", 1e-6), log_fn=log_fn,
     )
     scheduler = common.WarmupCosine(
         optimizer, total_epochs=hp["epochs"],
@@ -158,6 +159,16 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
                "grad_norm": []}
     best = {"score": -1.0, "epoch": 0, "source": "raw"}
     patience_cnt = 0
+
+    skipped_batches = 0
+    max_skipped = hp.get("max_skipped_batches", 20)
+    clip_warned = False
+    first_epoch_norms = []
+
+    if clip:
+        log_fn(f"Gradient clipping: {clip}")
+    else:
+        log_fn("Gradient clipping: nonaktif")
 
     log_fn(f"\nMemulai {tag} Loop (monitor: {monitor})...")
     log_fn("-" * 78)
@@ -204,17 +215,38 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
 
-            grad_norm = torch.nn.utils.clip_grad_norm_(
-                model.parameters(), clip if clip else 1e9
+            # Norm gradien dihitung dengan implementasi aman-MPS.
+            grad_norm, bad_params = common.safe_clip_grad_norm(
+                model.named_parameters(), clip
             )
-            if not torch.isfinite(grad_norm):
-                log_fn("")
-                log_fn("!" * 78)
-                log_fn(f"Norm gradien non-finite pada epoch {epoch}. Training dihentikan.")
-                log_fn("Jalankan `python diagnose.py`.")
-                log_fn("!" * 78)
-                raise RuntimeError(f"Norm gradien non-finite pada epoch {epoch}.")
+
+            if bad_params or not np.isfinite(grad_norm):
+                # Satu batch buruk BUKAN alasan membatalkan seluruh run.
+                # Batch itu dilewati, optimizer tidak melangkah, training lanjut.
+                # Run dibatalkan hanya kalau ini terjadi berulang kali.
+                skipped_batches += 1
+                if skipped_batches <= 3:
+                    names = ", ".join(bad_params[:3]) if bad_params else "(norm total)"
+                    log_fn(f"  [epoch {epoch}] batch dilewati - gradien non-finite "
+                           f"pada: {names}")
+                if skipped_batches > max_skipped:
+                    log_fn("")
+                    log_fn("!" * 78)
+                    log_fn(f"DIVERGENSI: {skipped_batches} batch dilewati, melewati "
+                           f"batas {max_skipped}.")
+                    log_fn("Training dihentikan. Jalankan `python diagnose_step.py`")
+                    log_fn("untuk mengetahui parameter mana yang meledak.")
+                    log_fn("!" * 78)
+                    raise RuntimeError(
+                        f"Terlalu banyak batch dengan gradien non-finite "
+                        f"({skipped_batches}). Jalankan diagnose_step.py."
+                    )
+                optimizer.zero_grad(set_to_none=True)
+                continue
+
             epoch_grad_norm = max(epoch_grad_norm, float(grad_norm))
+            if epoch == 1:
+                first_epoch_norms.append(float(grad_norm))
 
             optimizer.step()
             if ema:
@@ -224,6 +256,23 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
             # akurasi train hanya indikatif saat mixup aktif
             run_correct += (outputs.argmax(1) == labels).sum().item()
             run_total += imgs.size(0)
+
+        # Peringatkan kalau clipping terlalu agresif dibanding norm sebenarnya.
+        # Clipping seharusnya menangkap LONJAKAN, bukan memotong tiap langkah.
+        if epoch == 1 and clip and first_epoch_norms and not clip_warned:
+            med = float(np.median(first_epoch_norms))
+            if clip < 0.5 * med:
+                log_fn("")
+                log_fn(f"  PERINGATAN: grad_clip={clip} jauh di bawah norm gradien "
+                       f"khas ({med:.1f}).")
+                log_fn(f"  Setiap langkah dipotong ~{med/max(clip,1e-9):.0f}x, bukan "
+                       f"sekadar menangkap lonjakan.")
+                log_fn(f"  Ini bisa membuat sqrt(v_hat) di AdamW jatuh ke wilayah eps "
+                       f"dan meledakkan update.")
+                log_fn(f"  Saran: set grad_clip=0.0 (nonaktif) atau "
+                       f"{2*med:.0f} di config.py.")
+                log_fn("")
+            clip_warned = True
 
         scheduler.step()
 
@@ -273,6 +322,9 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
             f"auc {m_use['auc_macro']:.4f} | gn {epoch_grad_norm:.1f} | "
             f"{time.time()-t0:.0f}s{marker}"
         )
+
+        if skipped_batches:
+            log_fn(f"    (kumulatif {skipped_batches} batch dilewati karena gradien non-finite)")
 
         if patience_cnt >= hp.get("patience", 10**9):
             log_fn(f"\nEarly stopping pada epoch {epoch} "

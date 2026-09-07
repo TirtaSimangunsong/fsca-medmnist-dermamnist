@@ -117,7 +117,13 @@ def build_transforms(mean, std, train=True, strength=1.0):
     if aug["vertical_flip_p"] > 0:
         ops.append(transforms.RandomVerticalFlip(p=aug["vertical_flip_p"]))
     if aug["rotation_degrees"] > 0:
-        ops.append(transforms.RandomRotation(degrees=aug["rotation_degrees"] * s))
+        # fill = mean dataset dalam skala 0-255. Tanpa ini, sudut kosong hasil
+        # rotasi terisi hitam (0), yang setelah Normalize dengan std kecil
+        # (~0.14 di DermaMNIST) menjadi -5.6 - outlier ekstrem di setiap citra
+        # teraugmentasi. Mengisinya dengan mean membuat area kosong menjadi
+        # nol setelah normalisasi, yaitu netral.
+        fill = tuple(int(round(m * 255)) for m in mean)
+        ops.append(transforms.RandomRotation(degrees=aug["rotation_degrees"] * s, fill=fill))
 
     cj = aug["color_jitter"]
     ops.append(transforms.ColorJitter(
@@ -259,6 +265,47 @@ def build_dataloaders(mean, std, batch_size, n_classes, splits=("train", "val"),
     return loaders, info
 
 
+def safe_clip_grad_norm(parameters, max_norm):
+    """
+    Pengganti torch.nn.utils.clip_grad_norm_ yang aman di MPS.
+
+    Implementasi bawaan memakai jalur `foreach` yang menggabungkan operasi
+    norm lintas tensor. Di backend MPS jalur ini pernah mengembalikan inf/NaN
+    padahal seluruh gradiennya sebenarnya finite - artinya training dibatalkan
+    karena laporan palsu.
+
+    Di sini norm tiap tensor dihitung terpisah dalam float32 lalu dikumpulkan
+    di CPU. Sedikit lebih lambat, tapi hasilnya bisa dipercaya.
+
+    Returns: (total_norm_float, daftar_nama_parameter_yang_rusak)
+    """
+    import torch
+
+    params = [(n, p) for n, p in parameters if p.grad is not None]
+    if not params:
+        return 0.0, []
+
+    norms, bad = [], []
+    for name, p in params:
+        g = p.grad.detach()
+        n = g.float().norm(2).cpu()
+        if not torch.isfinite(n):
+            bad.append(name)
+        norms.append(n)
+
+    total = torch.stack(norms).norm(2).item()
+
+    if bad or not np.isfinite(total):
+        return total, bad
+
+    if max_norm and total > max_norm:
+        coef = max_norm / (total + 1e-6)
+        for _, p in params:
+            p.grad.detach().mul_(coef)
+
+    return total, []
+
+
 # =========================================================
 # MIXUP / CUTMIX
 # =========================================================
@@ -370,7 +417,7 @@ class ModelEMA:
 # =========================================================
 # OPTIMIZER & SCHEDULER
 # =========================================================
-def build_optimizer(model, lr, weight_decay, backbone_lr_mult=0.1, log_fn=print):
+def build_optimizer(model, lr, weight_decay, backbone_lr_mult=0.1, eps=1e-6, log_fn=print):
     """
     Dua penyempurnaan dibanding versi lama:
 
@@ -380,6 +427,12 @@ def build_optimizer(model, lr, weight_decay, backbone_lr_mult=0.1, log_fn=print)
        sebelumnya justru membekukan backbone yang belum terlatih.
     2. Norm & bias dikeluarkan dari weight decay - praktik standar yang
        konsisten memberi sedikit kenaikan akurasi.
+    3. Stem (layer0) juga dikeluarkan dari weight decay. Dengan hanya 1.728
+       parameter dan gradien yang kecil, conv1 adalah bagian model yang paling
+       rentan: begitu bobotnya menyusut, keluarannya mendekati konstan,
+       variansi BatchNorm menuju nol, dan backward-nya menghasilkan inf.
+    4. eps AdamW dinaikkan ke 1e-6. Nilai default 1e-8 terlalu dekat dengan
+       batas presisi float32, terutama untuk parameter bergradien kecil.
     """
     from torch.optim import AdamW
 
@@ -396,7 +449,8 @@ def build_optimizer(model, lr, weight_decay, backbone_lr_mult=0.1, log_fn=print)
         if not p.requires_grad:
             continue
         is_backbone = any(k in name for k in backbone_keys)
-        no_decay    = p.ndim <= 1 or name.endswith(".bias")
+        no_decay    = (p.ndim <= 1 or name.endswith(".bias")
+                       or name.startswith("layer0"))
         key = ("backbone_" if is_backbone else "new_") + ("nodecay" if no_decay else "decay")
         groups[key]["params"].append(p)
 
@@ -404,9 +458,9 @@ def build_optimizer(model, lr, weight_decay, backbone_lr_mult=0.1, log_fn=print)
     n_bb  = sum(p.numel() for g in ("backbone_decay", "backbone_nodecay") for p in groups[g]["params"])
     n_new = sum(p.numel() for g in ("new_decay", "new_nodecay") for p in groups[g]["params"])
     log_fn(f"Optimizer AdamW  | backbone: {n_bb:,} params @ lr={lr * backbone_lr_mult:.1e}"
-           f"  |  modul baru: {n_new:,} params @ lr={lr:.1e}")
+           f"  |  modul baru: {n_new:,} params @ lr={lr:.1e}  |  eps={eps:.0e}")
 
-    return AdamW(param_groups)
+    return AdamW(param_groups, eps=eps)
 
 
 class WarmupCosine:
