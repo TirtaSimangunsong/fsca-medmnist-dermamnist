@@ -234,8 +234,18 @@ MODEL_CONFIG = {
 
     # Inisialisasi stem 3x3. JANGAN pakai skala 49/9 versi lama - itu memperbesar
     # aktivasi ~5.4x dan berkontribusi pada divergensi NaN.
-    #   "kaiming" (default, teraman) | "pool" | "center"
-    "stem_init":           "kaiming",
+    #   "center" (DEFAULT) - potong tengah 3x3 dari kernel 7x7. Ini persis
+    #       perilaku kode asli Anda, satu-satunya konfigurasi stem yang
+    #       terbukti berjalan tanpa divergensi.
+    #   "kaiming" - init acak. Dicoba, dan semua divergensi yang teramati
+    #       muncul di layer0. Jangan dipakai sampai forensik menjelaskan kenapa.
+    #   "pool" - rata-rata 7x7 -> 3x3 tanpa penskalaan.
+    "stem_init":           "center",
+
+    # eps BatchNorm untuk bn1. Backward BN mengandung 1/sqrt(var + eps);
+    # menaikkan eps membatasi suku itu kalau ada kanal bervariansi ~0.
+    # Set None untuk memakai default PyTorch (1e-5).
+    "stem_bn_eps":         1e-3,
 }
 
 

@@ -246,15 +246,32 @@ class ResNet18_Attn(nn.Module):
         # blok residual pertama sempat bekerja. Diganti 3x3 stride 1 dan maxpool
         # dibuang, sehingga peta fitur menjadi 28 -> 28 -> 14 -> 7 -> 4.
         new_conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
-        stem_init = MODEL_CONFIG.get("stem_init", "kaiming")
+        stem_init = MODEL_CONFIG.get("stem_init", "center")
         _init_conv1_from_pretrained(new_conv1, base.conv1.weight, mode=stem_init)
 
-        # bn1 pretrained menyimpan running_mean/running_var dari distribusi
-        # aktivasi stem 7x7 ImageNet. Begitu stem diganti, statistik itu tidak
-        # lagi berlaku dan justru menyesatkan di eval-mode pada epoch-epoch
-        # awal. Direset agar dipelajari ulang dari data DermaMNIST.
         bn1 = base.bn1
-        bn1.reset_running_stats()
+
+        # CATATAN KEGAGALAN
+        # -----------------
+        # Versi sebelumnya memanggil bn1.reset_running_stats(). Itu TIDAK
+        # memengaruhi gradien di train-mode, jadi bukan penyebab langsung -
+        # tetapi seluruh divergensi yang teramati selalu muncul persis di
+        # layer0.0.weight dan layer0.1.weight, sehingga stem dikembalikan ke
+        # konfigurasi paling konservatif.
+        #
+        # Backward BatchNorm mengandung 1/sqrt(var + eps). Kalau sebuah kanal
+        # keluaran conv1 punya variansi batch mendekati nol, suku itu meledak.
+        # eps default 1e-5 memberi batas atas 316; eps 1e-3 menurunkannya ke
+        # 31.6, cukup untuk mencegah ledakan tanpa mengubah perilaku normal.
+        if MODEL_CONFIG.get("stem_bn_eps"):
+            bn1.eps = float(MODEL_CONFIG["stem_bn_eps"])
+
+        # conv1 baru tidak berpasangan dengan gamma/beta ImageNet, yang
+        # dikalibrasi untuk stem 7x7 stride 2. Direset ke identitas.
+        if stem_init == "kaiming":
+            nn.init.ones_(bn1.weight)
+            nn.init.zeros_(bn1.bias)
+
         self.layer0 = nn.Sequential(new_conv1, bn1, base.relu)
 
         self.layer1 = base.layer1   # 64  ch, 28x28

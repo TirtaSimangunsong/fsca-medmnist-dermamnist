@@ -161,7 +161,7 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
     patience_cnt = 0
 
     skipped_batches = 0
-    max_skipped = hp.get("max_skipped_batches", 20)
+    max_skipped = hp.get("max_skipped_batches", 5)   # cukup; forensik sudah dicetak di kejadian pertama
     clip_warned = False
     first_epoch_norms = []
 
@@ -225,6 +225,15 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
                 # Batch itu dilewati, optimizer tidak melangkah, training lanjut.
                 # Run dibatalkan hanya kalau ini terjadi berulang kali.
                 skipped_batches += 1
+                if skipped_batches == 1:
+                    # Forensik lengkap pada kejadian PERTAMA, di kondisi nyata.
+                    try:
+                        common.forensics_report(
+                            model, imgs, labels, outputs, loss, log_fn,
+                            dump_path=os.path.join(OUTPUT_DIR, "batch_gagal.pt"),
+                        )
+                    except Exception as e:
+                        log_fn(f"  (forensik gagal dijalankan: {e})")
                 if skipped_batches <= 3:
                     names = ", ".join(bad_params[:3]) if bad_params else "(norm total)"
                     log_fn(f"  [epoch {epoch}] batch dilewati - gradien non-finite "

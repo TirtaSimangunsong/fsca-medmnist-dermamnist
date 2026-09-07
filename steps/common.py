@@ -306,6 +306,114 @@ def safe_clip_grad_norm(parameters, max_norm):
     return total, []
 
 
+
+# =========================================================
+# FORENSIK KEGAGALAN
+# =========================================================
+def _tstat(name, t, log_fn):
+    """Ringkasan satu tensor, aman terhadap NaN/inf."""
+    import torch
+
+    t = t.detach().float()
+    n_nan = int(torch.isnan(t).sum())
+    n_inf = int(torch.isinf(t).sum())
+    fin = t[torch.isfinite(t)]
+    if fin.numel():
+        lo, hi = fin.min().item(), fin.max().item()
+        mu, sd = fin.mean().item(), fin.std().item()
+    else:
+        lo = hi = mu = sd = float("nan")
+    flag = "!!" if (n_nan or n_inf) else "  "
+    log_fn(f"  {flag} {name:<20} min={lo:>11.4f} maks={hi:>11.4f} "
+           f"mean={mu:>10.4f} std={sd:>9.4f} NaN={n_nan} Inf={n_inf}")
+
+
+def forensics_report(model, imgs, labels, outputs, loss, log_fn, dump_path=None):
+    """
+    Cetak semua yang dibutuhkan untuk mendiagnosis batch yang gagal.
+
+    Dipanggil dari loop training pada kejadian non-finite PERTAMA, sehingga
+    diagnosis terjadi pada kondisi nyata - bukan pada skrip terpisah yang
+    ternyata mereplikasi konfigurasi yang berbeda.
+    """
+    import torch
+    import torch.nn as nn
+
+    log_fn("")
+    log_fn("=" * 78)
+    log_fn("  FORENSIK BATCH GAGAL")
+    log_fn("=" * 78)
+
+    log_fn("\nTensor:")
+    _tstat("input", imgs, log_fn)
+    _tstat("logits", outputs, log_fn)
+    log_fn(f"     loss = {loss.item()}")
+    log_fn(f"     label unik = {sorted(set(labels.detach().cpu().tolist()))}")
+
+    # Telusuri aktivasi per tahap
+    log_fn("\nAktivasi per tahap (forward ulang, tanpa gradien):")
+    model.eval()
+    with torch.no_grad():
+        h = imgs
+        for i, m in enumerate(model.layer0):
+            h = m(h)
+            _tstat(f"layer0.{i} ({type(m).__name__})", h, log_fn)
+        for i in (1, 2, 3, 4):
+            h = getattr(model, f"layer{i}")(h)
+            _tstat(f"layer{i}", h, log_fn)
+            h = getattr(model, f"fsca{i}")(h)
+            _tstat(f"fsca{i}", h, log_fn)
+    model.train()
+
+    # Statistik batch BatchNorm - tersangka utama untuk ledakan di stem.
+    # Backward BatchNorm mengandung 1/sqrt(var + eps); kalau ada kanal yang
+    # variansinya nol, suku itu meledak.
+    log_fn("\nVariansi batch per kanal di bn1 (bukan running stats):")
+    with torch.no_grad():
+        z = model.layer0[0](imgs)                 # keluaran conv1
+        var = z.var(dim=[0, 2, 3], unbiased=False)
+        mean = z.mean(dim=[0, 2, 3])
+        bn = model.layer0[1]
+        log_fn(f"     var  min={var.min().item():.3e}  maks={var.max().item():.3e}")
+        log_fn(f"     mean min={mean.min().item():.3e}  maks={mean.max().item():.3e}")
+        log_fn(f"     bn eps = {bn.eps}")
+        n_dead = int((var < 1e-8).sum())
+        if n_dead:
+            log_fn(f"  !! {n_dead} kanal punya variansi ~0 -> 1/sqrt(var+eps) meledak.")
+            log_fn(f"     Indeks: {torch.nonzero(var < 1e-8).flatten().tolist()[:16]}")
+        inv = (var + bn.eps).rsqrt()
+        log_fn(f"     1/sqrt(var+eps): maks = {inv.max().item():.3e}")
+        _tstat("bn1.weight", bn.weight, log_fn)
+        _tstat("bn1.bias", bn.bias, log_fn)
+
+    # Norm gradien per parameter
+    log_fn("\nGradien per parameter (yang rusak lebih dulu):")
+    bad, good = [], []
+    for name, p in model.named_parameters():
+        if p.grad is None:
+            continue
+        g = p.grad.detach()
+        nn_ = int(torch.isnan(g).sum())
+        ni = int(torch.isinf(g).sum())
+        norm = g.float().norm(2).item()
+        (bad if (nn_ or ni) else good).append((name, norm, nn_, ni))
+
+    for name, norm, nn_, ni in bad[:15]:
+        log_fn(f"  !! {name:<44} norm={norm:>11.3e} NaN={nn_} Inf={ni}")
+    for name, norm, _, _ in sorted(good, key=lambda r: -r[1])[:8]:
+        log_fn(f"     {name:<44} norm={norm:>11.3e}")
+
+    if dump_path:
+        try:
+            torch.save({"imgs": imgs.detach().cpu(), "labels": labels.detach().cpu()},
+                       dump_path)
+            log_fn(f"\nBatch disimpan -> {dump_path}")
+        except Exception as e:
+            log_fn(f"\nGagal menyimpan batch: {e}")
+
+    log_fn("=" * 78)
+
+
 # =========================================================
 # MIXUP / CUTMIX
 # =========================================================
