@@ -43,9 +43,7 @@ import sys
 import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import PATHS, MODEL_CONFIG
-import common 
 
 OUTPUT_DIR   = PATHS["output_dir"]
 META_PATH    = PATHS["dataset_meta"]
@@ -182,18 +180,34 @@ ATTENTION_REGISTRY = {
 # =========================================================
 # UTIL: INISIALISASI STEM DARI BOBOT PRETRAINED
 # =========================================================
-def _init_conv1_from_pretrained(new_conv, pretrained_weight):
+def _init_conv1_from_pretrained(new_conv, pretrained_weight, mode="kaiming"):
     """
-    Turunkan kernel 3x3 dari kernel 7x7 ImageNet.
+    Inisialisasi stem 3x3.
 
-    Memotong bagian tengah (versi lama) membuang ~80% massa kernel sehingga
-    aktivasi keluaran jauh lebih kecil dari yang diharapkan lapisan BN
-    berikutnya. Adaptive average pooling ke 3x3 lalu dikalikan (49/9)
-    mempertahankan jumlah bobot, sehingga skala respons tetap wajar.
+    PERINGATAN HASIL EKSPERIMEN
+    ----------------------------
+    Versi sebelumnya memakai `adaptive_avg_pool2d(w7, 3) * (49/9)`. Faktor 5.44
+    itu dimaksudkan mempertahankan jumlah bobot, tetapi hasilnya aktivasi
+    conv1 menjadi jauh lebih besar dari yang diharapkan `bn1` pretrained.
+    Kombinasi itu berkontribusi pada divergensi NaN. JANGAN dipakai lagi.
+
+    mode:
+      "kaiming" (DEFAULT, paling aman) - init acak Kaiming. Stem 3x3 stride 1
+          secara struktural memang berbeda dari stem 7x7 stride 2, sehingga
+          bobot ImageNet-nya tidak benar-benar transferable. Yang penting
+          untuk transfer learning adalah layer1-layer4, dan itu tetap dimuat.
+      "pool" - rata-rata 7x7 -> 3x3 TANPA penskalaan.
+      "center" - potong bagian tengah 3x3 (perilaku kode Anda yang asli).
     """
     with torch.no_grad():
-        w = F.adaptive_avg_pool2d(pretrained_weight, 3) * (49.0 / 9.0)
-        new_conv.weight.copy_(w)
+        if mode == "kaiming":
+            nn.init.kaiming_normal_(new_conv.weight, mode="fan_out", nonlinearity="relu")
+        elif mode == "pool":
+            new_conv.weight.copy_(F.adaptive_avg_pool2d(pretrained_weight, 3))
+        elif mode == "center":
+            new_conv.weight.copy_(pretrained_weight[:, :, 2:5, 2:5])
+        else:
+            raise ValueError(f"mode stem tidak dikenal: {mode}")
 
 
 # =========================================================
@@ -232,9 +246,16 @@ class ResNet18_Attn(nn.Module):
         # blok residual pertama sempat bekerja. Diganti 3x3 stride 1 dan maxpool
         # dibuang, sehingga peta fitur menjadi 28 -> 28 -> 14 -> 7 -> 4.
         new_conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
-        if pretrained:
-            _init_conv1_from_pretrained(new_conv1, base.conv1.weight)
-        self.layer0 = nn.Sequential(new_conv1, base.bn1, base.relu)
+        stem_init = MODEL_CONFIG.get("stem_init", "kaiming")
+        _init_conv1_from_pretrained(new_conv1, base.conv1.weight, mode=stem_init)
+
+        # bn1 pretrained menyimpan running_mean/running_var dari distribusi
+        # aktivasi stem 7x7 ImageNet. Begitu stem diganti, statistik itu tidak
+        # lagi berlaku dan justru menyesatkan di eval-mode pada epoch-epoch
+        # awal. Direset agar dipelajari ulang dari data DermaMNIST.
+        bn1 = base.bn1
+        bn1.reset_running_stats()
+        self.layer0 = nn.Sequential(new_conv1, bn1, base.relu)
 
         self.layer1 = base.layer1   # 64  ch, 28x28
         self.layer2 = base.layer2   # 128 ch, 14x14

@@ -109,7 +109,7 @@ DATASET = {
 AUGMENTATION = {
     # RandomResizedCrop mensimulasikan variasi jarak/magnifikasi dermatoskop
     "random_resized_crop": {
-        "enabled": True,
+        "enabled": False,   # nyalakan di Tahap 3 (lihat PERBAIKAN.md)
         "scale":   [0.70, 1.00],
         "ratio":   [0.85, 1.18],
     },
@@ -122,7 +122,7 @@ AUGMENTATION = {
         "saturation": 0.25,
         "hue":        0.05,         # warna = petunjuk diagnostik, jitter dibuat kecil
     },
-    "random_erasing_p":   0.25,     # oklusi kecil, memaksa model tidak bergantung 1 patch
+    "random_erasing_p":   0.0,      # nyalakan di Tahap 3     # oklusi kecil, memaksa model tidak bergantung 1 patch
 }
 
 
@@ -153,8 +153,10 @@ IMBALANCE = {
 # =========================================================
 # MIXUP / CUTMIX
 # =========================================================
+# MATIKAN dulu. MixUp adalah salah satu tersangka divergensi dan juga
+# membuat kurva loss training sulit dibaca saat mendiagnosis masalah lain.
 MIXUP = {
-    "enabled":      True,
+    "enabled":      False,
     "mixup_alpha":  0.2,
     "cutmix_alpha": 1.0,
     "prob":         0.5,   # peluang sebuah batch dimix sama sekali
@@ -165,17 +167,19 @@ MIXUP = {
 # =========================================================
 # HYPERPARAMETER - STEP 5 (TRAINING UTAMA / PHASE 1)
 # =========================================================
+# PROFIL AMAN. Nilai-nilai ini sengaja konservatif setelah run pertama
+# mengalami divergensi NaN. Naikkan SATU PER SATU, bukan sekaligus.
 TRAIN_HP = {
-    "epochs":            150,     # naik dari 30; cosine butuh horizon panjang
-    "batch_size":        128,     # naik dari 64
-    "lr":                1e-3,    # LR untuk modul baru (stem, FSCA, fc)
-    "backbone_lr_mult":  0.1,     # backbone pretrained pakai lr * 0.1
-    "weight_decay":      5e-2,    # AdamW butuh wd jauh lebih besar dari 1e-4
+    "epochs":            60,      # mulai pendek; verifikasi dulu, panjangkan nanti
+    "batch_size":        128,
+    "lr":                3e-4,    # turun dari 1e-3
+    "backbone_lr_mult":  0.1,
+    "weight_decay":      1e-2,    # turun dari 5e-2 (tersangka divergensi)
     "warmup_epochs":     5,
     "label_smoothing":   0.1,
     "grad_clip":         1.0,
-    "ema_decay":         0.999,   # 0 = matikan EMA
-    "patience":          40,      # early stopping longgar; cosine perlu selesai
+    "ema_decay":         0.0,     # MATIKAN dulu; nyalakan setelah baseline stabil
+    "patience":          20,
     "monitor":           "balanced_acc",   # acc | balanced_acc | auc
     "seed":              42,
 }
@@ -220,6 +224,11 @@ MODEL_CONFIG = {
     "fsca_spatial_kernel": 7,
     "attention_stages":    [1, 2, 3, 4],   # stage mana yang dipasangi modul atensi
     "zero_init_attention": True,     # modul atensi mulai dari identitas -> training stabil
+
+    # Inisialisasi stem 3x3. JANGAN pakai skala 49/9 versi lama - itu memperbesar
+    # aktivasi ~5.4x dan berkontribusi pada divergensi NaN.
+    #   "kaiming" (default, teraman) | "pool" | "center"
+    "stem_init":           "kaiming",
 }
 
 
@@ -247,6 +256,8 @@ EXPERIMENT = {
 # =========================================================
 # DEVICE
 # =========================================================
+# Kalau diagnose.py menandai MPS memberi hasil berbeda dari CPU,
+# ganti nilai ini menjadi "cpu".
 DEVICE_CONFIG = {
     # "auto" -> mps (Apple Silicon) > cuda > cpu
     "device": "auto",

@@ -258,33 +258,6 @@ def build_dataloaders(mean, std, batch_size, n_classes, splits=("train", "val"),
 
     return loaders, info
 
-def ensure_ssl_certificates():
-    """
-    macOS: Python tidak memakai keychain sistem, sehingga unduhan HTTPS
-    (bobot ImageNet torchvision, dataset medmnist dari Zenodo) gagal dengan
-    CERTIFICATE_VERIFY_FAILED. Arahkan ke CA bundle certifi.
-
-    Ini tetap MEMVERIFIKASI sertifikat dengan benar - bukan mematikan
-    verifikasi seperti trik ssl._create_unverified_context yang banyak
-    beredar di forum.
-    """
-    try:
-        import certifi
-    except ImportError:
-        return False
-
-    path = certifi.where()
-    os.environ.setdefault("SSL_CERT_FILE", path)
-    os.environ.setdefault("REQUESTS_CA_BUNDLE", path)
-    try:
-        import ssl
-        ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=path)
-    except Exception:
-        pass
-    return True
-
-
-ensure_ssl_certificates()
 
 # =========================================================
 # MIXUP / CUTMIX
@@ -351,30 +324,47 @@ class ModelEMA:
     dataset kecil di mana kurva validasi sangat berisik.
     """
 
-    def __init__(self, model, decay=0.999):
+    def __init__(self, model, decay=0.999, warmup_steps=0):
         import copy
-        import torch
 
-        self.decay  = decay
+        self.decay = decay
+        self.warmup_steps = warmup_steps
+        self.steps = 0
         self.module = copy.deepcopy(model).eval()
         for p in self.module.parameters():
             p.requires_grad_(False)
 
-    @staticmethod
-    def _is_float(t):
-        return t.dtype.is_floating_point
+        # Nama parameter (bukan buffer). Hanya ini yang dirata-ratakan.
+        self._param_names = {n for n, _ in model.named_parameters()}
 
     def update(self, model):
+        """
+        Rata-ratakan PARAMETER saja; buffer BatchNorm (running_mean/var)
+        DISALIN langsung dari model aktif.
+
+        Merata-ratakan running_var membuat statistik BN tertinggal jauh di
+        belakang bobot yang sudah bergerak, sehingga model EMA berperilaku
+        aneh di eval-mode pada epoch-epoch awal - persis kondisi yang membuat
+        checkpoint rusak tersimpan di epoch 1.
+        """
         import torch
+
+        self.steps += 1
+        # Ramp-up: awalnya EMA mengikuti model erat, lalu perlahan melambat.
+        d = min(self.decay, (1 + self.steps) / (10 + self.steps))
 
         with torch.no_grad():
             msd = model.state_dict()
             for k, v in self.module.state_dict().items():
                 mv = msd[k].detach()
-                if self._is_float(v):
-                    v.mul_(self.decay).add_(mv, alpha=1.0 - self.decay)
+                if k in self._param_names and v.dtype.is_floating_point:
+                    v.mul_(d).add_(mv, alpha=1.0 - d)
                 else:
-                    v.copy_(mv)   # buffer integer (mis. num_batches_tracked)
+                    v.copy_(mv)   # buffer BN & num_batches_tracked
+
+    def ready(self):
+        """EMA baru layak dipakai untuk seleksi checkpoint setelah warmup."""
+        return self.steps >= self.warmup_steps
 
 
 # =========================================================

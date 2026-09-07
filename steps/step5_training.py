@@ -145,15 +145,17 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
 
     # ---------- EMA ----------
     ema_decay = hp.get("ema_decay", 0.0)
-    ema = common.ModelEMA(model, decay=ema_decay) if ema_decay else None
+    ema_warmup = hp.get("ema_warmup_steps", 3 * max(1, len(train_loader)))
+    ema = common.ModelEMA(model, decay=ema_decay, warmup_steps=ema_warmup) if ema_decay else None
     if ema:
-        log_fn(f"EMA aktif (decay={ema_decay})")
+        log_fn(f"EMA aktif (decay={ema_decay}, warmup {ema_warmup} langkah)")
 
     monitor = hp.get("monitor", "balanced_acc")
     clip = hp.get("grad_clip", 0.0)
 
     history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": [],
-               "val_balanced_acc": [], "val_auc": [], "val_f1_macro": [], "lr": []}
+               "val_balanced_acc": [], "val_auc": [], "val_f1_macro": [], "lr": [],
+               "grad_norm": []}
     best = {"score": -1.0, "epoch": 0, "source": "raw"}
     patience_cnt = 0
 
@@ -167,6 +169,7 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
         # ----- Train -----
         model.train()
         run_loss, run_correct, run_total = 0.0, 0, 0
+        epoch_grad_norm = 0.0
         for imgs, labels in train_loader:
             imgs = imgs.to(device, non_blocking=True)
             labels = labels.squeeze(1).long().to(device, non_blocking=True)
@@ -179,10 +182,40 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
                 outputs = model(imgs)
                 loss = criterion(outputs, labels)
 
+            # --- PENJAGA NaN ---
+            # Tanpa ini, run sebelumnya membuang 40 epoch memproses NaN dan
+            # menulis checkpoint rusak. Sekarang berhenti pada kejadian pertama.
+            if not torch.isfinite(loss):
+                log_fn("")
+                log_fn("!" * 78)
+                log_fn(f"DIVERGENSI pada epoch {epoch}: loss = {loss.item()}")
+                log_fn("Training dihentikan. Yang biasanya menyebabkan ini:")
+                log_fn("  - learning rate terlalu besar (turunkan TRAIN_HP['lr'])")
+                log_fn("  - weight_decay terlalu besar (coba 1e-2 alih-alih 5e-2)")
+                log_fn("  - aktivasi meledak dari inisialisasi stem")
+                log_fn("  - bug numerik backend MPS")
+                log_fn("Jalankan `python diagnose.py` untuk mengisolasi penyebabnya.")
+                log_fn("!" * 78)
+                raise RuntimeError(
+                    f"Loss menjadi non-finite pada epoch {epoch}. "
+                    f"Jalankan diagnose.py."
+                )
+
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            if clip:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
+
+            grad_norm = torch.nn.utils.clip_grad_norm_(
+                model.parameters(), clip if clip else 1e9
+            )
+            if not torch.isfinite(grad_norm):
+                log_fn("")
+                log_fn("!" * 78)
+                log_fn(f"Norm gradien non-finite pada epoch {epoch}. Training dihentikan.")
+                log_fn("Jalankan `python diagnose.py`.")
+                log_fn("!" * 78)
+                raise RuntimeError(f"Norm gradien non-finite pada epoch {epoch}.")
+            epoch_grad_norm = max(epoch_grad_norm, float(grad_norm))
+
             optimizer.step()
             if ema:
                 ema.update(model)
@@ -195,11 +228,14 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
         scheduler.step()
 
         # ----- Validation -----
-        eval_model = ema.module if ema else model
         m_raw = common.evaluate(model, val_loader, device, n_classes, criterion=criterion)
         m_use = m_raw
         source = "raw"
-        if ema:
+        # EMA hanya boleh ikut seleksi checkpoint setelah cukup langkah.
+        # Di run sebelumnya, EMA "menang" di epoch 1 - saat isinya masih
+        # hampir seluruhnya bobot inisialisasi - dan checkpoint rusak itulah
+        # yang tersimpan sebagai model terbaik.
+        if ema and ema.ready():
             m_ema = common.evaluate(ema.module, val_loader, device, n_classes, criterion=criterion)
             if m_ema[monitor] > m_raw[monitor]:
                 m_use, source = m_ema, "ema"
@@ -215,6 +251,7 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
         history["val_auc"].append(round(m_use["auc_macro"], 4))
         history["val_f1_macro"].append(round(m_use["f1_macro"], 4))
         history["lr"].append(lr_now)
+        history["grad_norm"].append(round(epoch_grad_norm, 3))
 
         score = m_use[monitor]
         marker = ""
@@ -233,7 +270,8 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None,
             f"{tag} [{epoch:>3}/{hp['epochs']}] "
             f"lr {lr_now:.2e} | loss {t_loss:.3f}/{m_use['loss']:.3f} | "
             f"acc {m_use['acc']:.2f}% | bal {m_use['balanced_acc']:.2f}% | "
-            f"auc {m_use['auc_macro']:.4f} | {time.time()-t0:.0f}s{marker}"
+            f"auc {m_use['auc_macro']:.4f} | gn {epoch_grad_norm:.1f} | "
+            f"{time.time()-t0:.0f}s{marker}"
         )
 
         if patience_cnt >= hp.get("patience", 10**9):
