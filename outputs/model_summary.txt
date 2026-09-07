@@ -1,15 +1,14 @@
-Model          : ResNet-18 + FSCA
-Pretrained     : True
-Total params   : 11,958,095
-Trainable      : 11,958,095
-Attention params: 785,672
+Model: ResNet-18 + FSCA
+Total params   : 11,914,575
+Trainable      : 11,914,575
+FSCA params    : 742,152
 n_classes      : 7
 
 Modules:
-ResNet18_Attn(
+ResNet18_FSCA(
   (layer0): Sequential(
     (0): Conv2d(3, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
-    (1): BatchNorm2d(64, eps=0.001, momentum=0.1, affine=True, bias=True, track_running_stats=True)
+    (1): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, bias=True, track_running_stats=True)
     (2): ReLU(inplace=True)
   )
   (layer1): Sequential(
@@ -91,9 +90,9 @@ ResNet18_Attn(
   (fsca1): FSCAModule(
     (ca): ChannelAttention(
       (mlp): Sequential(
-        (0): Linear(in_features=64, out_features=8, bias=False)
+        (0): Linear(in_features=64, out_features=4, bias=False)
         (1): ReLU(inplace=True)
-        (2): Linear(in_features=8, out_features=64, bias=False)
+        (2): Linear(in_features=4, out_features=64, bias=False)
       )
     )
     (sa): SpatialAttention(
@@ -105,9 +104,9 @@ ResNet18_Attn(
   (fsca2): FSCAModule(
     (ca): ChannelAttention(
       (mlp): Sequential(
-        (0): Linear(in_features=128, out_features=16, bias=False)
+        (0): Linear(in_features=128, out_features=8, bias=False)
         (1): ReLU(inplace=True)
-        (2): Linear(in_features=16, out_features=128, bias=False)
+        (2): Linear(in_features=8, out_features=128, bias=False)
       )
     )
     (sa): SpatialAttention(
@@ -119,9 +118,9 @@ ResNet18_Attn(
   (fsca3): FSCAModule(
     (ca): ChannelAttention(
       (mlp): Sequential(
-        (0): Linear(in_features=256, out_features=32, bias=False)
+        (0): Linear(in_features=256, out_features=16, bias=False)
         (1): ReLU(inplace=True)
-        (2): Linear(in_features=32, out_features=256, bias=False)
+        (2): Linear(in_features=16, out_features=256, bias=False)
       )
     )
     (sa): SpatialAttention(
@@ -133,9 +132,9 @@ ResNet18_Attn(
   (fsca4): FSCAModule(
     (ca): ChannelAttention(
       (mlp): Sequential(
-        (0): Linear(in_features=512, out_features=64, bias=False)
+        (0): Linear(in_features=512, out_features=32, bias=False)
         (1): ReLU(inplace=True)
-        (2): Linear(in_features=64, out_features=512, bias=False)
+        (2): Linear(in_features=32, out_features=512, bias=False)
       )
     )
     (sa): SpatialAttention(
@@ -145,6 +144,6 @@ ResNet18_Attn(
     (bn): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, bias=True, track_running_stats=True)
   )
   (avgpool): AdaptiveAvgPool2d(output_size=1)
-  (dropout): Dropout(p=0.3, inplace=False)
+  (dropout): Dropout(p=0.4, inplace=False)
   (fc): Linear(in_features=512, out_features=7, bias=True)
 )
