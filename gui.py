@@ -82,7 +82,7 @@ class MacFriendlyTab(tk.Label):
 class CancerSkinCADApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Klasifikasi Kanker Kulit (MedMNIST-FSCA) — Tirta 01082230021")
+        self.root.title("Klasifikasi Kanker Kulit (MedMNIST-FSCA)")
         self.root.geometry("1200x720")
         self.root.configure(bg="#2d2d2d")
 
