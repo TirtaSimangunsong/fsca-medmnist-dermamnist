@@ -8,10 +8,14 @@ ImageNet, dengan:
   (IMBALANCE["loss_weight_mode"] di config.py).
   TIDAK memakai WeightedRandomSampler; DataLoader train memakai shuffle biasa.
 - Augmentasi train: HFlip, VFlip, rotasi, ColorJitter (AUGMENTATION di config.py)
-- AdamW optimizer + CosineAnnealingLR scheduler
-- Early stopping (TRAIN_HP["patience"])
-- Checkpoint model terbaik berdasarkan val accuracy
-- Plot loss & accuracy curve
+- AdamW optimizer + CosineAnnealingLR scheduler (T_max = jumlah epoch)
+- Checkpoint terbaik dipilih berdasarkan TRAIN_HP["select_metric"]
+  (default: val AUC macro, sesuai protokol resmi MedMNIST). Val accuracy
+  tidak dipakai karena berisik pada val set kecil dan tidak menghukum
+  model yang overconfident (val loss naik sementara val acc stagnan).
+- Early stopping memakai metrik yang sama (TRAIN_HP["patience"];
+  patience = epochs berarti praktis nonaktif)
+- Setiap epoch mencatat: loss, acc, balanced acc, dan AUC validasi
 
 Fungsi train_one_run() juga dipakai Step 11 (ablasi multi-seed).
 
@@ -41,52 +45,19 @@ CURVE_PATH    = PATHS["training_curve_chart"]
 DEFAULT_CONFIG = TRAIN_HP
 
 
-def _plot_curves(history, save_path):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    epochs = range(1, len(history["train_loss"]) + 1)
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    fig.patch.set_facecolor("#1a1a1a")
-
-    for ax in axes:
-        ax.set_facecolor("#1a1a1a")
-        ax.tick_params(colors="white")
-        for spine in ax.spines.values(): spine.set_color("#555")
-
-    # Loss
-    axes[0].plot(epochs, history["train_loss"], color="#4fc3f7", label="Train Loss", linewidth=2)
-    axes[0].plot(epochs, history["val_loss"],   color="#ef5350", label="Val Loss",   linewidth=2)
-    axes[0].set_title("Training & Validation Loss", color="white", fontweight="bold")
-    axes[0].set_xlabel("Epoch", color="white")
-    axes[0].set_ylabel("Loss", color="white")
-    axes[0].legend(facecolor="#333", labelcolor="white")
-
-    # Accuracy
-    axes[1].plot(epochs, history["train_acc"], color="#4fc3f7", label="Train Acc", linewidth=2)
-    axes[1].plot(epochs, history["val_acc"],   color="#ef5350", label="Val Acc",   linewidth=2)
-    axes[1].set_title("Training & Validation Accuracy", color="white", fontweight="bold")
-    axes[1].set_xlabel("Epoch", color="white")
-    axes[1].set_ylabel("Accuracy (%)", color="white")
-    axes[1].legend(facecolor="#333", labelcolor="white")
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=120, bbox_inches="tight", facecolor="#1a1a1a")
-    plt.close()
-
-
 def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, tag=None):
     """
     Satu run training Fase 1.
 
-    hp        : dict berisi epochs, batch_size, lr, weight_decay, patience (+ seed opsional)
-    ckpt_path : lokasi simpan checkpoint terbaik (val accuracy)
+    hp        : dict berisi epochs, batch_size, lr, weight_decay, patience,
+                select_metric (opsional, default "auc"), seed (opsional)
+    ckpt_path : lokasi simpan checkpoint terbaik
     attention : "none" | "se" | "eca" | "cbam" | "fsca" | None (=MODEL_CONFIG)
     seed      : jika diberikan, mengunci inisialisasi dan urutan data
     tag       : prefix log (dipakai Step 11 agar log tiap run mudah dibedakan)
 
-    Return: dict {best_val_acc, best_epoch, history}
+    Return: dict {best_epoch, best_score, select_metric, best_val_acc,
+                  best_val_auc, history}
     """
     import torch
     import torch.nn as nn
@@ -99,6 +70,8 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
 
     prefix = f"[{tag}] " if tag else ""
     seed = seed if seed is not None else hp.get("seed")
+    select_metric = hp.get("select_metric", "auc")
+    sel_key, higher = common.selection_key(select_metric)
 
     with open(META_PATH)   as f: meta   = json.load(f)
     with open(CONFIG_PATH) as f: config = json.load(f)
@@ -139,20 +112,23 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
     # justru menghalangi fitur menyesuaikan diri.
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     log_fn(f"{prefix}Melatih seluruh model. Trainable params: {trainable:,}")
+    log_fn(f"{prefix}Checkpoint dipilih berdasarkan: val {select_metric} "
+           f"({'maksimum' if higher else 'minimum'})")
 
     optimizer = AdamW(model.parameters(), lr=hp["lr"], weight_decay=hp["weight_decay"])
     scheduler = CosineAnnealingLR(optimizer, T_max=hp["epochs"])
 
-    history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
-    best_val_acc = 0.0
+    history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": [],
+               "val_bal_acc": [], "val_auc": [], "lr": []}
+    best_score, best_epoch, best_vm = None, 0, None
     patience_cnt = 0
-    best_epoch   = 0
 
     log_fn(f"\n{prefix}Memulai Training Loop...")
-    log_fn("-" * 55)
+    log_fn("-" * 72)
 
     for epoch in range(1, hp["epochs"] + 1):
         t0 = time.time()
+        lr_now = optimizer.param_groups[0]["lr"]
 
         # --- Train ---
         model.train()
@@ -174,32 +150,23 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
         scheduler.step()
 
         # --- Validation ---
-        model.eval()
-        val_loss, val_correct, val_total = 0.0, 0, 0
-        with torch.no_grad():
-            for imgs, labels in val_loader:
-                imgs   = imgs.to(device)
-                labels = labels.view(-1).long().to(device)
-                outputs = model(imgs)
-                loss    = criterion(outputs, labels)
-                val_loss    += loss.item() * imgs.size(0)
-                val_correct += (outputs.argmax(1) == labels).sum().item()
-                val_total   += imgs.size(0)
+        vm = common.validate(model, val_loader, device, n_classes, criterion)
 
         t_loss = train_loss / train_total
-        v_loss = val_loss   / val_total
         t_acc  = 100 * train_correct / train_total
-        v_acc  = 100 * val_correct   / val_total
 
         history["train_loss"].append(round(t_loss, 4))
-        history["val_loss"].append(round(v_loss, 4))
+        history["val_loss"].append(round(vm["loss"], 4))
         history["train_acc"].append(round(t_acc, 2))
-        history["val_acc"].append(round(v_acc, 2))
+        history["val_acc"].append(round(vm["acc"], 2))
+        history["val_bal_acc"].append(round(vm["balanced_acc"], 2))
+        history["val_auc"].append(round(vm["auc_macro"], 4))
+        history["lr"].append(lr_now)
 
+        score = vm[sel_key]
         marker = ""
-        if v_acc > best_val_acc:
-            best_val_acc = v_acc
-            best_epoch   = epoch
+        if common.is_better(score, best_score, higher):
+            best_score, best_epoch, best_vm = score, epoch, vm
             patience_cnt = 0
             torch.save(model.state_dict(), ckpt_path)
             marker = " ✓ SAVED"
@@ -208,8 +175,9 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
 
         log_fn(
             f"{prefix}Epoch [{epoch:>3}/{hp['epochs']}] "
-            f"Loss: {t_loss:.4f}/{v_loss:.4f}  "
-            f"Acc: {t_acc:.1f}%/{v_acc:.1f}%  "
+            f"Loss: {t_loss:.4f}/{vm['loss']:.4f}  "
+            f"Acc: {t_acc:.1f}%/{vm['acc']:.1f}%  "
+            f"BalAcc: {vm['balanced_acc']:.1f}%  AUC: {vm['auc_macro']:.4f}  "
             f"({time.time() - t0:.0f}s){marker}"
         )
 
@@ -218,10 +186,22 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
                    f"(patience={hp['patience']} tercapai).")
             break
 
-    log_fn(f"\n{prefix}Best Val Accuracy : {best_val_acc:.2f}%  (epoch {best_epoch})")
+    history["best_epoch"]    = best_epoch
+    history["select_metric"] = select_metric
+
+    log_fn(f"\n{prefix}Checkpoint terpilih: epoch {best_epoch} | "
+           f"val AUC {best_vm['auc_macro']:.4f} | val acc {best_vm['acc']:.2f}% | "
+           f"val bal acc {best_vm['balanced_acc']:.2f}% | val loss {best_vm['loss']:.4f}")
     log_fn(f"{prefix}Checkpoint disimpan → {ckpt_path}")
 
-    return {"best_val_acc": best_val_acc, "best_epoch": best_epoch, "history": history}
+    return {
+        "best_epoch":    best_epoch,
+        "best_score":    best_score,
+        "select_metric": select_metric,
+        "best_val_acc":  best_vm["acc"],
+        "best_val_auc":  best_vm["auc_macro"],
+        "history":       history,
+    }
 
 
 def run(log_fn, hp_override=None):
@@ -229,6 +209,9 @@ def run(log_fn, hp_override=None):
     Entry point GUI (Step 5).
     hp_override: dict opsional untuk menimpa TRAIN_HP.
     """
+    sys.path.insert(0, os.path.dirname(__file__))
+    import common
+
     for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"), (SPLIT_PATH, "Step 3")]:
         if not os.path.exists(path):
             log_fn(f"ERROR: {os.path.basename(path)} tidak ditemukan. Jalankan {name} terlebih dahulu.")
@@ -247,11 +230,12 @@ def run(log_fn, hp_override=None):
         json.dump(history, f, indent=2)
 
     log_fn("Membuat plot training curve...")
-    _plot_curves(history, CURVE_PATH)
+    common.plot_history(history, CURVE_PATH, title_prefix="Fase 1")
     log_fn(f"Chart tersimpan → {CURVE_PATH}")
 
     return {
         "best_val_acc": result["best_val_acc"],
+        "best_val_auc": result["best_val_auc"],
         "best_epoch":   result["best_epoch"],
         "history":      history,
         "chart_path":   CURVE_PATH,

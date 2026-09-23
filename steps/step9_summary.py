@@ -23,7 +23,8 @@ from config import PATHS, DATASET
 OUTPUT_DIR   = PATHS["output_dir"]
 META_PATH    = PATHS["dataset_meta"]
 REPORT_PATH  = PATHS["evaluation_report"]
-HISTORY_PATH = PATHS["finetune_history"]
+FT_HISTORY   = PATHS["finetune_history"]
+TR_HISTORY   = PATHS["training_history"]
 FINAL_MODEL  = PATHS["final_model"]
 SUMMARY_PNG  = PATHS["summary_report_chart"]
 SUMMARY_JSON = PATHS["summary_json"]
@@ -54,9 +55,17 @@ def run(log_fn):
     with open(META_PATH)   as f: meta    = json.load(f)
     with open(REPORT_PATH) as f: report  = json.load(f)
 
-    history = {}
-    if os.path.exists(HISTORY_PATH):
-        with open(HISTORY_PATH) as f: history = json.load(f)
+    # Kurva: pakai history fine-tuning bila Step 6 benar-benar melatih,
+    # selain itu history Fase 1 (Step 5).
+    history, hist_label = {}, ""
+    if os.path.exists(FT_HISTORY):
+        with open(FT_HISTORY) as f: history = json.load(f)
+        hist_label = "Fine-tuning"
+    elif os.path.exists(TR_HISTORY):
+        with open(TR_HISTORY) as f: history = json.load(f)
+        hist_label = "Fase 1"
+    best_epoch    = history.get("best_epoch")
+    select_metric = history.get("select_metric", "?")
 
     if "balanced_accuracy" not in report:
         log_fn("PERINGATAN: evaluation_report.json berasal dari Step 7 versi lama "
@@ -94,6 +103,8 @@ def run(log_fn):
     log_fn(f"  F1 Macro       : {f1_mac:.4f}")
     log_fn(f"  AUC Macro      : {auc:.4f}")
     log_fn(f"  Evaluasi       : TTA={'ya' if tta else 'tidak'}, tau={tau}")
+    if best_epoch:
+        log_fn(f"  Checkpoint     : epoch {best_epoch} ({hist_label}), dipilih via val {select_metric}")
     plain = report.get("without_tta_or_adjustment")
     if plain:
         log_fn(f"  Tanpa TTA/adj  : acc {plain['accuracy']:.2f}% | "
@@ -163,16 +174,20 @@ def run(log_fn):
              bbox=dict(facecolor="#333", alpha=0.6, boxstyle="round,pad=0.5"))
     ax2.set_title("Info Model", color="white", fontweight="bold")
 
-    # 3. Finetune curve (bawah kiri)
+    # 3. Kurva validasi (bawah kiri): Fine-tuning bila ada, selain itu Fase 1
     ax3 = fig.add_subplot(gs[1, :2])
     ax3.set_facecolor("#1a1a1a")
     if history:
         ep = range(1, len(history["val_acc"]) + 1)
         ax3.plot(ep, history["val_loss"], color="#ef5350", label="Val Loss",    linewidth=2)
-        ax3.plot(ep, [v/100 for v in history["val_acc"]], color="#4fc3f7", label="Val Acc (scaled)", linewidth=2)
-        ax3.axhline(y=f1_w, color="#81c784", linestyle="--", label=f"F1-W test={f1_w:.3f}", linewidth=1.5)
+        ax3.plot(ep, [v/100 for v in history["val_acc"]], color="#4fc3f7", label="Val Acc (/100)", linewidth=2)
+        if history.get("val_auc"):
+            ax3.plot(ep, history["val_auc"], color="#81c784", label="Val AUC", linewidth=2)
+        if best_epoch:
+            ax3.axvline(best_epoch, color="#ffd54f", linestyle="--", linewidth=1.2,
+                        label=f"ckpt terpilih (ep {best_epoch})")
         ax3.legend(facecolor="#333", labelcolor="white", fontsize=8)
-    ax3.set_title("Finetune Curve & Final F1", color="white", fontweight="bold")
+    ax3.set_title(f"Kurva Validasi {hist_label}".strip(), color="white", fontweight="bold")
     ax3.set_xlabel("Epoch", color="white"); ax3.set_ylabel("Value", color="white")
     ax3.tick_params(colors="white")
     for spine in ax3.spines.values(): spine.set_color("#555")
@@ -209,6 +224,9 @@ def run(log_fn):
         "tta":               tta,
         "logit_adjustment_tau": tau,
         "device":            device.lower(),
+        "checkpoint_epoch":  best_epoch,
+        "checkpoint_phase":  hist_label,
+        "select_metric":     select_metric,
         "model_mb":          round(model_mb, 2),
         "total_params":      total_params,
         "chart_path":        SUMMARY_PNG,

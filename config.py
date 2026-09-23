@@ -124,12 +124,18 @@ AUGMENTATION = {
 # HYPERPARAMETER — STEP 5 (TRAINING AWAL / FASE 1)
 # =========================================================
 TRAIN_HP = {
-    "epochs":       100,
-    "batch_size":   64,
-    "lr":           1e-3,
-    "weight_decay": 1e-4,
-    "patience":     100,    # = epochs -> early stopping praktis nonaktif
-    "seed":         42,
+    "epochs":        100,
+    "batch_size":    64,
+    "lr":            1e-3,
+    "weight_decay":  1e-4,
+    "patience":      100,    # = epochs -> early stopping praktis nonaktif
+    "seed":          42,     # seed run utama (Step 11 memakai EXPERIMENT["seeds"])
+    # Metrik validasi untuk memilih checkpoint terbaik (dan early stopping):
+    #   "auc"     -> val AUC macro, makin besar makin baik (protokol resmi MedMNIST)
+    #   "loss"    -> val loss, makin kecil makin baik
+    #   "bal_acc" -> val balanced accuracy
+    #   "acc"     -> val accuracy (perilaku lama; berisik & buta overconfidence)
+    "select_metric": "auc",
 }
 
 
@@ -137,14 +143,18 @@ TRAIN_HP = {
 # HYPERPARAMETER — STEP 6 (FINETUNING / FASE 2)
 # =========================================================
 FINETUNE_HP = {
-    "enabled":         False,
-    "epochs":          15,
+    # False -> Step 6 hanya menyalin checkpoint Fase 1 sebagai model final.
+    # True  -> fine-tuning dijalankan; model final HANYA diganti bila metrik
+    #          validasi (TRAIN_HP["select_metric"]) lebih baik dari Fase 1.
+    "enabled":          False,
+    "epochs":           10,
     "batch_size":       32,
-    "lr":               1e-4,   # 10x lebih kecil dari TRAIN_HP["lr"]
+    "lr":               1e-5,   # 100x lebih kecil dari Fase 1 (Fase 1 sudah konvergen)
     "weight_decay":     1e-4,
     "label_smoothing":  0.1,
     "patience":         5,
-    # Layer yang di-unfreeze saat finetuning (substring match pada nama parameter)
+    # Modul tingkat-atas yang dilatih saat fine-tuning (dicocokkan persis dengan
+    # nama modul paling luar, mis. "layer3.0.conv1" -> "layer3"); sisanya dibekukan
     "unfreeze_keys": ["layer3", "layer4", "fsca3", "fsca4", "fc"],
 }
 
@@ -180,8 +190,10 @@ IMBALANCE = {
     # balanced accuracy di VALIDATION set, lalu dilaporkan di TEST set.
     # Jika auto_tune_tau=False, nilai logit_adjustment_tau dipakai apa adanya
     # (0.0 = tanpa logit adjustment).
+    # CATATAN: model dilatih dengan Weighted CE yang SUDAH mengoreksi imbalance,
+    # sehingga logit adjustment di atasnya berisiko koreksi ganda. Default: mati.
     "logit_adjustment_tau": 0.0,
-    "auto_tune_tau":        True,
+    "auto_tune_tau":        False,
     "tau_grid":             [0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5],
 }
 
@@ -262,7 +274,8 @@ if __name__ == "__main__":
     print(f"  Output dir   : {PATHS['output_dir']}")
     print(f"  Image size   : {DATASET['image_size']}")
     print(f"  Attention    : {MODEL_CONFIG['attention']}")
-    print(f"  Train epochs : {TRAIN_HP['epochs']}")
+    print(f"  Train epochs : {TRAIN_HP['epochs']} (pilih ckpt: {TRAIN_HP['select_metric']})")
+    print(f"  Finetune     : {'aktif' if FINETUNE_HP['enabled'] else 'nonaktif'}")
     print(f"  Finetune lr  : {FINETUNE_HP['lr']}")
     print(f"  TTA          : {EVAL_CONFIG['tta']}")
     print(f"  Auto-tune tau: {IMBALANCE['auto_tune_tau']}")

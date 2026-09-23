@@ -11,8 +11,12 @@ Fungsi yang dipakai lebih dari satu step:
 - evaluate()                  : metrik test (opsional TTA 8 arah + logit adjustment)
 - make_logit_adjustment()     : vektor tau * log(prior)
 - tune_logit_adjustment()     : sapuan tau di VALIDATION set
+- validate()                  : loss + acc + balanced acc + AUC di val set (per epoch)
+- selection_key()/is_better() : aturan memilih checkpoint terbaik (TRAIN_HP["select_metric"])
+- plot_history()              : kurva loss / accuracy / val AUC
 
-Dipakai oleh: step5_training (train_one_run), step7_evaluation, step11_ablation.
+Dipakai oleh: step5_training (train_one_run), step6_finetune, step7_evaluation,
+step11_ablation.
 """
 
 import os
@@ -281,3 +285,106 @@ def _sweep_tau(logits, y_true, n_classes, class_counts, grid, metric, log_fn):
 
     log_fn(f"  -> tau terpilih: {best_tau}")
     return best_tau, table
+
+
+# =========================================================
+# VALIDASI PER EPOCH & PEMILIHAN CHECKPOINT
+# =========================================================
+# nama di config -> (kunci di dict metrik, True jika makin besar makin baik)
+_SELECT_METRICS = {
+    "auc":     ("auc_macro",    True),
+    "loss":    ("loss",         False),
+    "bal_acc": ("balanced_acc", True),
+    "acc":     ("acc",          True),
+}
+
+
+def selection_key(name):
+    """Return (kunci_metrik, higher_is_better) untuk TRAIN_HP["select_metric"]."""
+    if name not in _SELECT_METRICS:
+        raise ValueError(f"select_metric '{name}' tidak dikenal. "
+                         f"Pilihan: {list(_SELECT_METRICS)}")
+    return _SELECT_METRICS[name]
+
+
+def is_better(score, best, higher):
+    if best is None:
+        return True
+    if score != score:          # NaN tidak pernah dianggap lebih baik
+        return False
+    return score > best if higher else score < best
+
+
+def validate(model, loader, device, n_classes, criterion=None):
+    """
+    Evaluasi satu kali di loader (tanpa TTA, tanpa logit adjustment).
+    Return dict: loss, acc, balanced_acc, f1_macro, f1_weighted, auc_macro.
+    """
+    import torch
+
+    model.eval()
+    total_loss, n = 0.0, 0
+    logits_all, y_all = [], []
+    with torch.no_grad():
+        for imgs, labels in loader:
+            imgs = imgs.to(device)
+            y = labels.view(-1).long().to(device)
+            out = model(imgs)
+            if criterion is not None:
+                total_loss += criterion(out, y).item() * imgs.size(0)
+            n += imgs.size(0)
+            logits_all.append(out.float().cpu().numpy())
+            y_all.append(y.cpu().numpy())
+
+    m = compute_metrics(np.concatenate(logits_all), np.concatenate(y_all), n_classes)
+    m.pop("y_true"); m.pop("y_pred")
+    m["loss"] = total_loss / n if criterion is not None else float("nan")
+    return m
+
+
+def plot_history(history, save_path, title_prefix="Training"):
+    """Kurva loss, accuracy, dan val AUC (jika tercatat) dengan tema gelap GUI."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    has_auc = bool(history.get("val_auc"))
+    n_panels = 3 if has_auc else 2
+    epochs = range(1, len(history["train_loss"]) + 1)
+
+    fig, axes = plt.subplots(1, n_panels, figsize=(6 * n_panels, 5))
+    fig.patch.set_facecolor("#1a1a1a")
+    for ax in axes:
+        ax.set_facecolor("#1a1a1a")
+        ax.tick_params(colors="white")
+        for spine in ax.spines.values():
+            spine.set_color("#555")
+
+    axes[0].plot(epochs, history["train_loss"], color="#4fc3f7", label="Train Loss", linewidth=2)
+    axes[0].plot(epochs, history["val_loss"],   color="#ef5350", label="Val Loss",   linewidth=2)
+    axes[0].set_title(f"{title_prefix} - Loss", color="white", fontweight="bold")
+    axes[0].set_xlabel("Epoch", color="white"); axes[0].set_ylabel("Loss", color="white")
+
+    axes[1].plot(epochs, history["train_acc"], color="#4fc3f7", label="Train Acc", linewidth=2)
+    axes[1].plot(epochs, history["val_acc"],   color="#ef5350", label="Val Acc",   linewidth=2)
+    if history.get("val_bal_acc"):
+        axes[1].plot(epochs, history["val_bal_acc"], color="#ba68c8",
+                     label="Val Balanced Acc", linewidth=1.5)
+    axes[1].set_title(f"{title_prefix} - Accuracy", color="white", fontweight="bold")
+    axes[1].set_xlabel("Epoch", color="white"); axes[1].set_ylabel("Accuracy (%)", color="white")
+
+    if has_auc:
+        axes[2].plot(epochs, history["val_auc"], color="#81c784", label="Val AUC", linewidth=2)
+        axes[2].set_title(f"{title_prefix} - Val AUC", color="white", fontweight="bold")
+        axes[2].set_xlabel("Epoch", color="white"); axes[2].set_ylabel("AUC macro", color="white")
+
+    best_epoch = history.get("best_epoch")
+    for ax in axes:
+        if best_epoch:
+            ax.axvline(best_epoch, color="#ffd54f", linestyle="--", linewidth=1,
+                       label=f"ckpt terpilih (ep {best_epoch})")
+        ax.legend(facecolor="#333", labelcolor="white", fontsize=8)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=120, bbox_inches="tight", facecolor="#1a1a1a")
+    plt.close()

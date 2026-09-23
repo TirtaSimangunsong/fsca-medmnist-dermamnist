@@ -3,125 +3,82 @@
   "attention": "fsca",
   "device": "mps",
   "tta": true,
-  "logit_adjustment_tau": 0.25,
-  "tau_sweep_val": [
-    {
-      "tau": 0.0,
-      "acc": 74.1775,
-      "balanced_acc": 53.5393,
-      "f1_macro": 0.5118
-    },
-    {
-      "tau": 0.25,
-      "acc": 67.8963,
-      "balanced_acc": 57.9774,
-      "f1_macro": 0.4858
-    },
-    {
-      "tau": 0.5,
-      "acc": 23.0309,
-      "balanced_acc": 48.2038,
-      "f1_macro": 0.3313
-    },
-    {
-      "tau": 0.75,
-      "acc": 13.1605,
-      "balanced_acc": 40.8853,
-      "f1_macro": 0.2802
-    },
-    {
-      "tau": 1.0,
-      "acc": 8.674,
-      "balanced_acc": 37.0052,
-      "f1_macro": 0.2204
-    },
-    {
-      "tau": 1.25,
-      "acc": 4.8853,
-      "balanced_acc": 32.3148,
-      "f1_macro": 0.124
-    },
-    {
-      "tau": 1.5,
-      "acc": 3.8883,
-      "balanced_acc": 30.7943,
-      "f1_macro": 0.1066
-    }
-  ],
-  "accuracy": 69.1771,
-  "balanced_accuracy": 62.5039,
-  "f1_weighted": 0.7177,
-  "f1_macro": 0.5022,
-  "auc_macro": 0.9079,
+  "logit_adjustment_tau": 0.0,
+  "tau_sweep_val": [],
+  "accuracy": 74.1646,
+  "balanced_accuracy": 60.48,
+  "f1_weighted": 0.7476,
+  "f1_macro": 0.5363,
+  "auc_macro": 0.9356,
   "without_tta_or_adjustment": {
-    "accuracy": 74.6135,
-    "balanced_accuracy": 60.9781,
-    "f1_macro": 0.5677,
-    "auc_macro": 0.9078
+    "accuracy": 72.419,
+    "balanced_accuracy": 61.1508,
+    "f1_macro": 0.5192,
+    "auc_macro": 0.9302
   },
   "confusion_matrix": [
     [
-      40,
-      13,
-      4,
-      1,
-      6,
-      2,
-      0
-    ],
-    [
+      35,
       22,
-      60,
-      2,
-      4,
       3,
-      3,
-      9
-    ],
-    [
-      29,
-      17,
-      105,
-      10,
-      31,
-      27,
-      1
-    ],
-    [
-      3,
-      6,
-      1,
-      10,
       0,
-      3,
+      4,
+      2,
       0
     ],
     [
-      10,
-      11,
-      22,
+      12,
+      77,
       5,
-      131,
-      33,
-      11
+      0,
+      2,
+      4,
+      3
     ],
     [
-      14,
-      22,
-      60,
-      32,
-      173,
-      1014,
+      19,
+      27,
+      104,
+      2,
+      23,
+      43,
+      2
+    ],
+    [
+      4,
+      6,
+      1,
+      7,
+      1,
+      4,
+      0
+    ],
+    [
+      19,
+      12,
+      20,
+      2,
+      96,
+      67,
+      7
+    ],
+    [
+      12,
+      36,
+      55,
+      6,
+      70,
+      1142,
+      20
+    ],
+    [
+      0,
+      1,
+      0,
+      0,
+      0,
+      2,
       26
-    ],
-    [
-      0,
-      1,
-      0,
-      0,
-      0,
-      1,
-      27
     ]
   ],
   "class_names": [
@@ -144,57 +101,57 @@
   ],
   "per_class": {
     "actinic keratoses and intraepithelial carcinoma": {
-      "precision": 0.339,
-      "recall": 0.6061,
-      "f1-score": 0.4348,
+      "precision": 0.3465,
+      "recall": 0.5303,
+      "f1-score": 0.4192,
       "support": 66.0
     },
     "basal cell carcinoma": {
-      "precision": 0.4615,
-      "recall": 0.5825,
-      "f1-score": 0.515,
+      "precision": 0.4254,
+      "recall": 0.7476,
+      "f1-score": 0.5423,
       "support": 103.0
     },
     "benign keratosis-like lesions": {
-      "precision": 0.5412,
-      "recall": 0.4773,
-      "f1-score": 0.5072,
+      "precision": 0.5532,
+      "recall": 0.4727,
+      "f1-score": 0.5098,
       "support": 220.0
     },
     "dermatofibroma": {
-      "precision": 0.1613,
-      "recall": 0.4348,
-      "f1-score": 0.2353,
+      "precision": 0.4118,
+      "recall": 0.3043,
+      "f1-score": 0.35,
       "support": 23.0
     },
     "melanoma": {
-      "precision": 0.3808,
-      "recall": 0.5874,
-      "f1-score": 0.4621,
+      "precision": 0.4898,
+      "recall": 0.4305,
+      "f1-score": 0.4582,
       "support": 223.0
     },
     "melanocytic nevi": {
-      "precision": 0.9363,
-      "recall": 0.7562,
-      "f1-score": 0.8366,
+      "precision": 0.9035,
+      "recall": 0.8516,
+      "f1-score": 0.8768,
       "support": 1341.0
     },
     "vascular lesions": {
-      "precision": 0.3649,
-      "recall": 0.931,
-      "f1-score": 0.5243,
+      "precision": 0.4483,
+      "recall": 0.8966,
+      "f1-score": 0.5977,
       "support": 29.0
     },
     "macro avg": {
-      "precision": 0.455,
-      "recall": 0.625,
-      "f1-score": 0.5022,
+      "precision": 0.5112,
+      "recall": 0.6048,
+      "f1-score": 0.5363,
       "support": 2005.0
     },
     "weighted avg": {
-      "precision": 0.77,
-      "recall": 0.6918,
-      "f1-score": 0.7177,
+      "precision": 0.7639,
+      "recall": 0.7416,
+      "f1-score": 0.7476,
       "support": 2005.0
     }
   },

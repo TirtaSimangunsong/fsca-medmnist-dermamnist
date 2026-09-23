@@ -1,10 +1,10 @@
 {
   "actinic keratoses and intraepithelial carcinoma": {
     "sample_index": 1375,
-    "confidence": 0.7008,
+    "confidence": 0.9622,
     "predicted": "actinic keratoses and intraepithelial carcinoma",
     "correct": true,
-    "n_correct": 36,
+    "n_correct": 39,
     "n_total": 66,
     "layers": {
       "fsca3": {
@@ -12,7 +12,7 @@
           7,
           7
         ],
-        "raw_max": 0.05847793,
+        "raw_max": 0.0760231,
         "is_dead": false,
         "model_pred": "actinic keratoses and intraepithelial carcinoma"
       },
@@ -21,18 +21,18 @@
           4,
           4
         ],
-        "raw_max": 0.24710053,
+        "raw_max": 0.4953202,
         "is_dead": false,
         "model_pred": "actinic keratoses and intraepithelial carcinoma"
       }
     }
   },
   "basal cell carcinoma": {
-    "sample_index": 1698,
-    "confidence": 0.8592,
+    "sample_index": 645,
+    "confidence": 0.982,
     "predicted": "basal cell carcinoma",
     "correct": true,
-    "n_correct": 64,
+    "n_correct": 70,
     "n_total": 103,
     "layers": {
       "fsca3": {
@@ -40,7 +40,7 @@
           7,
           7
         ],
-        "raw_max": 0.04743338,
+        "raw_max": 0.11689758,
         "is_dead": false,
         "model_pred": "basal cell carcinoma"
       },
@@ -49,7 +49,7 @@
           4,
           4
         ],
-        "raw_max": 0.36492044,
+        "raw_max": 0.60922945,
         "is_dead": false,
         "model_pred": "basal cell carcinoma"
       }
@@ -57,10 +57,10 @@
   },
   "benign keratosis-like lesions": {
     "sample_index": 159,
-    "confidence": 0.8295,
+    "confidence": 0.956,
     "predicted": "benign keratosis-like lesions",
     "correct": true,
-    "n_correct": 103,
+    "n_correct": 107,
     "n_total": 220,
     "layers": {
       "fsca3": {
@@ -68,7 +68,7 @@
           7,
           7
         ],
-        "raw_max": 0.0301506,
+        "raw_max": 0.04894665,
         "is_dead": false,
         "model_pred": "benign keratosis-like lesions"
       },
@@ -77,7 +77,7 @@
           4,
           4
         ],
-        "raw_max": 0.21696275,
+        "raw_max": 0.44731122,
         "is_dead": false,
         "model_pred": "benign keratosis-like lesions"
       }
@@ -85,7 +85,7 @@
   },
   "dermatofibroma": {
     "sample_index": 1462,
-    "confidence": 0.5356,
+    "confidence": 0.9929,
     "predicted": "dermatofibroma",
     "correct": true,
     "n_correct": 9,
@@ -96,7 +96,7 @@
           7,
           7
         ],
-        "raw_max": 0.04263641,
+        "raw_max": 0.09956901,
         "is_dead": false,
         "model_pred": "dermatofibroma"
       },
@@ -105,18 +105,18 @@
           4,
           4
         ],
-        "raw_max": 0.26380134,
+        "raw_max": 0.59514177,
         "is_dead": false,
         "model_pred": "dermatofibroma"
       }
     }
   },
   "melanoma": {
-    "sample_index": 1671,
-    "confidence": 0.8255,
+    "sample_index": 360,
+    "confidence": 0.9691,
     "predicted": "melanoma",
     "correct": true,
-    "n_correct": 109,
+    "n_correct": 91,
     "n_total": 223,
     "layers": {
       "fsca3": {
@@ -124,7 +124,7 @@
           7,
           7
         ],
-        "raw_max": 0.05697369,
+        "raw_max": 0.18652941,
         "is_dead": false,
         "model_pred": "melanoma"
       },
@@ -133,18 +133,18 @@
           4,
           4
         ],
-        "raw_max": 0.3588478,
+        "raw_max": 0.60081768,
         "is_dead": false,
         "model_pred": "melanoma"
       }
     }
   },
   "melanocytic nevi": {
-    "sample_index": 348,
+    "sample_index": 11,
     "confidence": 1.0,
     "predicted": "melanocytic nevi",
     "correct": true,
-    "n_correct": 1149,
+    "n_correct": 1110,
     "n_total": 1341,
     "layers": {
       "fsca3": {
@@ -152,7 +152,7 @@
           7,
           7
         ],
-        "raw_max": 0.23877892,
+        "raw_max": 2.55212069,
         "is_dead": false,
         "model_pred": "melanocytic nevi"
       },
@@ -161,15 +161,15 @@
           4,
           4
         ],
-        "raw_max": 8.35720539,
+        "raw_max": 8.10552216,
         "is_dead": false,
         "model_pred": "melanocytic nevi"
       }
     }
   },
   "vascular lesions": {
-    "sample_index": 1784,
-    "confidence": 0.9859,
+    "sample_index": 470,
+    "confidence": 1.0,
     "predicted": "vascular lesions",
     "correct": true,
     "n_correct": 26,
@@ -180,7 +180,7 @@
           7,
           7
         ],
-        "raw_max": 0.08212498,
+        "raw_max": 0.6314801,
         "is_dead": false,
         "model_pred": "vascular lesions"
       },
@@ -189,7 +189,7 @@
           4,
           4
         ],
-        "raw_max": 0.63265347,
+        "raw_max": 2.04181361,
         "is_dead": false,
         "model_pred": "vascular lesions"
       }
