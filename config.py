@@ -2,7 +2,7 @@
 config.py — Konfigurasi Terpusat Pipeline FSCA-MedMNIST
 ==========================================================
 Single source of truth untuk semua path, parameter dataset, dan
-hyperparameter yang sebelumnya tersebar/diduplikasi di step1–step10.
+hyperparameter yang sebelumnya tersebar/diduplikasi di step1–step11.
 
 CARA PAKAI di setiap step (contoh):
     from config import PATHS, DATASET, TRAIN_HP, FINETUNE_HP
@@ -21,9 +21,25 @@ PENTING — Mengubah image_size BUKAN perubahan ringan:
          tapi waktu training akan naik signifikan di resolusi lebih besar
     Config ini hanya menyentralkan nilainya — bukan menghilangkan kebutuhan
     re-run pipeline saat resolusi berubah.
+
+PERUBAHAN (finalisasi kode)
+----------------------------
+- Ditambahkan IMBALANCE, EVAL_CONFIG, EXPERIMENT yang diimpor oleh Step 7
+  dan Step 11 tetapi sebelumnya tidak ada di file ini (ImportError).
+- Ditambahkan path ablasi (ablation_dir / ablation_report / ablation_chart).
+- MODEL_CONFIG["attention"] ditambahkan agar Step 4 bisa membangun
+  ResNet-18 dengan modul atensi none / se / eca / cbam / fsca.
+- DEVICE_CONFIG["device"] = "auto" (MPS -> CUDA -> CPU), dipakai lewat
+  steps/common.py::resolve_device.
+- TRAIN_HP["seed"] ditambahkan agar run utama bisa direproduksi.
 """
 
 import os
+
+# MPS (Apple Silicon) belum mendukung semua operator. Variabel ini harus
+# diset SEBELUM torch diinisialisasi; config.py selalu diimpor lebih dulu
+# oleh setiap step, jadi di sinilah tempat paling aman.
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 # =========================================================
 # PATH DASAR
@@ -31,6 +47,7 @@ import os
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR   = os.path.join(PROJECT_ROOT, "outputs")
 GRADCAM_DIR  = os.path.join(OUTPUT_DIR, "gradcam")
+ABLATION_DIR = os.path.join(OUTPUT_DIR, "ablation")
 
 PATHS = {
     "output_dir":        OUTPUT_DIR,
@@ -53,6 +70,11 @@ PATHS = {
     # Evaluasi
     "evaluation_report":  os.path.join(OUTPUT_DIR, "evaluation_report.json"),
     "summary_json":       os.path.join(OUTPUT_DIR, "summary_report.json"),
+
+    # Ablasi multi-seed (Step 11)
+    "ablation_dir":       ABLATION_DIR,
+    "ablation_report":    os.path.join(OUTPUT_DIR, "ablation_report.json"),
+    "ablation_chart":     os.path.join(OUTPUT_DIR, "ablation_comparison.png"),
 
     # Chart / visualisasi (PNG)
     "split_distribution_chart": os.path.join(OUTPUT_DIR, "split_distribution.png"),
@@ -84,7 +106,7 @@ DATASET = {
 
 
 # =========================================================
-# AUGMENTASI (dipakai Step 2 & Step 3 untuk transform train)
+# AUGMENTASI (dipakai Step 2, 3, 5, 6 untuk transform train)
 # =========================================================
 AUGMENTATION = {
     "horizontal_flip_p":  0.5,
@@ -99,7 +121,7 @@ AUGMENTATION = {
 
 
 # =========================================================
-# HYPERPARAMETER — STEP 5 (TRAINING AWAL)
+# HYPERPARAMETER — STEP 5 (TRAINING AWAL / FASE 1)
 # =========================================================
 TRAIN_HP = {
     "epochs":       30,
@@ -107,11 +129,12 @@ TRAIN_HP = {
     "lr":           1e-3,
     "weight_decay": 1e-4,
     "patience":     5,      # early stopping
+    "seed":         42,     # seed run utama (Step 11 memakai EXPERIMENT["seeds"])
 }
 
 
 # =========================================================
-# HYPERPARAMETER — STEP 6 (FINETUNING)
+# HYPERPARAMETER — STEP 6 (FINETUNING / FASE 2)
 # =========================================================
 FINETUNE_HP = {
     "epochs":          15,
@@ -126,14 +149,60 @@ FINETUNE_HP = {
 
 
 # =========================================================
-# KONFIGURASI MODEL (Step 4 — FSCA ResNet-18)
+# KONFIGURASI MODEL (Step 4 — ResNet-18 + modul atensi)
 # =========================================================
 MODEL_CONFIG = {
     "backbone":        "resnet18",
-    "pretrained": True,   
+    "pretrained":       True,
+    # Modul atensi yang dipasang setelah layer1..layer4.
+    # Pilihan: "none" | "se" | "eca" | "cbam" | "fsca"
+    "attention":        "fsca",
     "dropout_p":        0.4,
-    "fsca_reduction":   16,      # reduction ratio untuk ChannelAttention MLP
-    "fsca_spatial_kernel": 7,    # kernel size untuk SpatialAttention conv
+    "fsca_reduction":   16,      # reduction ratio untuk ChannelAttention MLP (juga SE/CBAM)
+    "fsca_spatial_kernel": 7,    # kernel size untuk SpatialAttention conv (juga CBAM)
+}
+
+
+# =========================================================
+# PENANGANAN CLASS IMBALANCE
+# =========================================================
+IMBALANCE = {
+    # Bobot Weighted Cross-Entropy (dipakai Step 3 & Step 5):
+    #   "sqrt"    -> 1/sqrt(n)  (DEFAULT, rasio maks/min ~7.6x)
+    #   "inverse" -> 1/n        (WCE penuh, rasio ~58x)
+    #   "none"    -> bobot seragam (CE biasa)
+    "loss_weight_mode":     "sqrt",
+
+    # Logit adjustment post-hoc saat evaluasi (Step 7):
+    #   logit_adj = logit - tau * log(prior_kelas)
+    # Jika auto_tune_tau=True, tau dipilih dari tau_grid berdasarkan
+    # balanced accuracy di VALIDATION set, lalu dilaporkan di TEST set.
+    # Jika auto_tune_tau=False, nilai logit_adjustment_tau dipakai apa adanya
+    # (0.0 = tanpa logit adjustment).
+    "logit_adjustment_tau": 0.0,
+    "auto_tune_tau":        True,
+    "tau_grid":             [0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5],
+}
+
+
+# =========================================================
+# EVALUASI (Step 7 & Step 11)
+# =========================================================
+EVAL_CONFIG = {
+    "batch_size": 256,
+    # Test-time augmentation 8 arah: rotasi 0/90/180/270 derajat,
+    # masing-masing dengan dan tanpa horizontal flip. Logit dirata-rata.
+    "tta":        True,
+}
+
+
+# =========================================================
+# EKSPERIMEN ABLASI MULTI-SEED (Step 11)
+# =========================================================
+EXPERIMENT = {
+    "attentions": ["none", "se", "eca", "cbam", "fsca"],
+    "seeds":      [0, 1, 2, 3, 4],
+    "epochs":     TRAIN_HP["epochs"],
 }
 
 
@@ -141,7 +210,9 @@ MODEL_CONFIG = {
 # DEVICE
 # =========================================================
 DEVICE_CONFIG = {
-    "device": "cpu",   # ganti ke "cuda" jika GPU tersedia
+    # "auto" -> MPS (Apple Silicon) jika ada, lalu CUDA, lalu CPU.
+    # Bisa juga dipaksa: "mps" | "cuda" | "cpu"
+    "device": "auto",
 }
 
 
@@ -153,6 +224,7 @@ def ensure_dirs():
     os.makedirs(PATHS["output_dir"], exist_ok=True)
     os.makedirs(PATHS["gradcam_dir"], exist_ok=True)
     os.makedirs(PATHS["png_dir"], exist_ok=True)
+    os.makedirs(PATHS["ablation_dir"], exist_ok=True)
 
 
 def get_png_subdir(step_name):
@@ -188,5 +260,8 @@ if __name__ == "__main__":
     print("Config OK.")
     print(f"  Output dir   : {PATHS['output_dir']}")
     print(f"  Image size   : {DATASET['image_size']}")
+    print(f"  Attention    : {MODEL_CONFIG['attention']}")
     print(f"  Train epochs : {TRAIN_HP['epochs']}")
     print(f"  Finetune lr  : {FINETUNE_HP['lr']}")
+    print(f"  TTA          : {EVAL_CONFIG['tta']}")
+    print(f"  Auto-tune tau: {IMBALANCE['auto_tune_tau']}")

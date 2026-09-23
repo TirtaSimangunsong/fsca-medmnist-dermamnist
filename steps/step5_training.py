@@ -1,24 +1,31 @@
 """
-Step 5 - Training
-==================
-Training loop lengkap dengan:
-- WeightedRandomSampler untuk menangani class imbalance
+Step 5 - Training (Fase 1)
+============================
+Melatih SELURUH model (tidak ada layer yang dibekukan) dari bobot awal
+ImageNet, dengan:
+- Penanganan class imbalance: Weighted Cross-Entropy. Bobot per kelas
+  = 1/sqrt(n_kelas), dinormalisasi agar rata-ratanya 1
+  (IMBALANCE["loss_weight_mode"] di config.py).
+  TIDAK memakai WeightedRandomSampler; DataLoader train memakai shuffle biasa.
+- Augmentasi train: HFlip, VFlip, rotasi, ColorJitter (AUGMENTATION di config.py)
 - AdamW optimizer + CosineAnnealingLR scheduler
-- Early stopping (patience=5)
-- Checkpoint model terbaik (val accuracy)
+- Early stopping (TRAIN_HP["patience"])
+- Checkpoint model terbaik berdasarkan val accuracy
 - Plot loss & accuracy curve
 
-Output: outputs/checkpoint_best.pth, outputs/training_curve.png
+Fungsi train_one_run() juga dipakai Step 11 (ablasi multi-seed).
+
+Output: outputs/checkpoint_best.pth, outputs/training_curve.png,
+        outputs/training_history.json
 """
 
 import os
 import sys
 import json
 import time
-import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import PATHS, DATASET, AUGMENTATION, TRAIN_HP, MODEL_CONFIG
+from config import PATHS, TRAIN_HP, MODEL_CONFIG, IMBALANCE
 
 OUTPUT_DIR    = PATHS["output_dir"]
 META_PATH     = PATHS["dataset_meta"]
@@ -28,48 +35,10 @@ CKPT_PATH     = PATHS["checkpoint_best"]
 HISTORY_PATH  = PATHS["training_history"]
 CURVE_PATH    = PATHS["training_curve_chart"]
 
-# Hyperparameter default kini berasal dari config.py (TRAIN_HP).
+# Hyperparameter default berasal dari config.py (TRAIN_HP).
 # Tetap diekspos sebagai DEFAULT_CONFIG agar kode lama yang mereferensikan
 # nama ini (mis. step lain atau notebook) tidak rusak.
 DEFAULT_CONFIG = TRAIN_HP
-
-
-def _build_loaders(meta, config, split_info):
-    import torch
-    from torch.utils.data import DataLoader, WeightedRandomSampler
-    from torchvision import transforms
-    from medmnist import DermaMNIST
-
-    mean = config["mean"]
-    std  = config["std"]
-    bs   = DEFAULT_CONFIG["batch_size"]
-    img_size = DATASET["image_size"]
-    aug = AUGMENTATION
-
-    train_transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(p=aug["horizontal_flip_p"]),
-        transforms.RandomVerticalFlip(p=aug["vertical_flip_p"]),
-        transforms.RandomRotation(degrees=aug["rotation_degrees"]),
-        transforms.ColorJitter(
-            brightness=aug["color_jitter"]["brightness"],
-            contrast=aug["color_jitter"]["contrast"],
-            saturation=aug["color_jitter"]["saturation"],
-        ),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std),
-    ])
-    eval_transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=mean, std=std),
-    ])
-
-    train_ds = DermaMNIST(split="train", transform=train_transform, download=DATASET["download"], size=img_size)
-    val_ds   = DermaMNIST(split="val",   transform=eval_transform,  download=DATASET["download"], size=img_size)
-
-
-    train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, num_workers=0)    
-    val_loader   = DataLoader(val_ds,   batch_size=bs, shuffle=False,  num_workers=0)
-    return train_loader, val_loader
 
 
 def _plot_curves(history, save_path):
@@ -107,81 +76,79 @@ def _plot_curves(history, save_path):
     plt.close()
 
 
-def run(log_fn, hp_override=None):
+def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, tag=None):
     """
-    hp_override: dict optional dari Step 6 untuk hyperparameter tuning.
+    Satu run training Fase 1.
+
+    hp        : dict berisi epochs, batch_size, lr, weight_decay, patience (+ seed opsional)
+    ckpt_path : lokasi simpan checkpoint terbaik (val accuracy)
+    attention : "none" | "se" | "eca" | "cbam" | "fsca" | None (=MODEL_CONFIG)
+    seed      : jika diberikan, mengunci inisialisasi dan urutan data
+    tag       : prefix log (dipakai Step 11 agar log tiap run mudah dibedakan)
+
+    Return: dict {best_val_acc, best_epoch, history}
     """
     import torch
     import torch.nn as nn
     from torch.optim import AdamW
     from torch.optim.lr_scheduler import CosineAnnealingLR
 
-    # Pastikan step sebelumnya sudah dijalankan
-    for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"), (SPLIT_PATH, "Step 3")]:
-        if not os.path.exists(path):
-            log_fn(f"ERROR: {os.path.basename(path)} tidak ditemukan. Jalankan {name} terlebih dahulu.")
-            raise FileNotFoundError(path)
-
-    with open(META_PATH)   as f: meta       = json.load(f)
-    with open(CONFIG_PATH) as f: config     = json.load(f)
-    with open(SPLIT_PATH)  as f: split_info = json.load(f)
-
-    # Merge hyperparameter
-    hp = {**DEFAULT_CONFIG, **(hp_override or {})}
-    n_classes = meta["n_classes"]
-
-    log_fn(f"Hyperparameter Training:")
-    for k, v in hp.items(): log_fn(f"  {k:<15}: {v}")
-    log_fn("")
-
-    # Build model
-    import sys
     sys.path.insert(0, os.path.dirname(__file__))
     from step4_model import build_model
+    import common
 
-    device = torch.device("cpu")
-    log_fn(f"Device: {device}")
+    prefix = f"[{tag}] " if tag else ""
+    seed = seed if seed is not None else hp.get("seed")
 
-    # PERBAIKAN BUG FATAL
-    # -------------------
-    # Sebelumnya baris ini adalah `pretrained=False`, padahal
-    # MODEL_CONFIG["pretrained"] bernilai True. Model karenanya dibangun
-    # dengan bobot ACAK, lalu blok di bawah membekukan seluruh backbone acak
-    # itu. layer1-layer4 tidak pernah dilatih sama sekali, sehingga classifier
-    # bekerja di atas proyeksi acak.
-    model = build_model(n_classes=n_classes, pretrained=MODEL_CONFIG["pretrained"]).to(device)
-    log_fn(f"Model berhasil diinisialisasi (pretrained={MODEL_CONFIG['pretrained']}).")
+    with open(META_PATH)   as f: meta   = json.load(f)
+    with open(CONFIG_PATH) as f: config = json.load(f)
+    n_classes = meta["n_classes"]
 
-    # DataLoaders
-    log_fn("Memuat DataLoader...")
-    train_loader, val_loader = _build_loaders(meta, config, split_info)
-    log_fn(f"  Train batches : {len(train_loader)}")
-    log_fn(f"  Val batches   : {len(val_loader)}")
+    if seed is not None:
+        common.set_seed(seed)
+        log_fn(f"{prefix}Seed: {seed}")
 
-    # Loss
-    class_weights_tensor = torch.tensor(split_info["loss_class_weights"], dtype=torch.float).to(device)
+    device = common.resolve_device(log_fn=log_fn)
+
+    # DataLoader (split resmi, shuffle biasa, augmentasi di train)
+    log_fn(f"{prefix}Memuat DataLoader...")
+    loaders, dinfo = common.build_dataloaders(
+        mean=config["mean"], std=config["std"],
+        batch_size=hp["batch_size"], n_classes=n_classes,
+        splits=("train", "val"), train_augment=True, seed=seed, log_fn=log_fn,
+    )
+    train_loader, val_loader = loaders["train"], loaders["val"]
+
+    # Model (bobot awal ImageNet sesuai MODEL_CONFIG["pretrained"])
+    model = build_model(n_classes=n_classes,
+                        pretrained=MODEL_CONFIG["pretrained"],
+                        attention=attention).to(device)
+    log_fn(f"{prefix}Model: ResNet-18 + {model.attention_name.upper()} "
+           f"(pretrained={MODEL_CONFIG['pretrained']})")
+
+    # Loss: Weighted Cross-Entropy (tanpa WeightedRandomSampler)
+    mode = IMBALANCE["loss_weight_mode"]
+    weights = common.compute_loss_class_weights(dinfo["class_counts"], mode)
+    class_weights_tensor = torch.tensor(weights, dtype=torch.float32).to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
+    log_fn(f"{prefix}Loss: Weighted CE (mode={mode}, rasio maks/min "
+           f"{weights.max() / weights.min():.1f}x)")
 
-    # PERBAIKAN BUG FATAL (lanjutan)
-    # -------------------------------
-    # Blok freeze backbone dihapus. Skema "Phase 1 head-only" itu masuk akal
-    # kalau backbone benar-benar berbobot ImageNet DAN stem-nya tidak diganti.
-    # Di sini stem sudah diganti jadi conv 3x3 stride 1 dan diinisialisasi
-    # ulang, sehingga membekukan backbone justru menghalangi fitur menyesuaikan
-    # diri. Seluruh model dilatih.
+    # Seluruh model dilatih. Skema "Phase 1 head-only" tidak dipakai karena
+    # stem sudah diganti (conv 3x3 stride 1), sehingga membekukan backbone
+    # justru menghalangi fitur menyesuaikan diri.
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    log_fn(f"Melatih seluruh model. Trainable params: {trainable:,}")
+    log_fn(f"{prefix}Melatih seluruh model. Trainable params: {trainable:,}")
 
     optimizer = AdamW(model.parameters(), lr=hp["lr"], weight_decay=hp["weight_decay"])
-
     scheduler = CosineAnnealingLR(optimizer, T_max=hp["epochs"])
 
     history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
-    best_val_acc  = 0.0
-    patience_cnt  = 0
-    best_epoch    = 0
+    best_val_acc = 0.0
+    patience_cnt = 0
+    best_epoch   = 0
 
-    log_fn("\nMemulai Training Loop...")
+    log_fn(f"\n{prefix}Memulai Training Loop...")
     log_fn("-" * 55)
 
     for epoch in range(1, hp["epochs"] + 1):
@@ -192,7 +159,7 @@ def run(log_fn, hp_override=None):
         train_loss, train_correct, train_total = 0.0, 0, 0
         for imgs, labels in train_loader:
             imgs   = imgs.to(device)
-            labels = labels.squeeze(1).long().to(device)
+            labels = labels.view(-1).long().to(device)
 
             optimizer.zero_grad()
             outputs = model(imgs)
@@ -201,8 +168,7 @@ def run(log_fn, hp_override=None):
             optimizer.step()
 
             train_loss    += loss.item() * imgs.size(0)
-            preds          = outputs.argmax(1)
-            train_correct += (preds == labels).sum().item()
+            train_correct += (outputs.argmax(1) == labels).sum().item()
             train_total   += imgs.size(0)
 
         scheduler.step()
@@ -213,20 +179,17 @@ def run(log_fn, hp_override=None):
         with torch.no_grad():
             for imgs, labels in val_loader:
                 imgs   = imgs.to(device)
-                labels = labels.squeeze(1).long().to(device)
+                labels = labels.view(-1).long().to(device)
                 outputs = model(imgs)
                 loss    = criterion(outputs, labels)
                 val_loss    += loss.item() * imgs.size(0)
-                preds        = outputs.argmax(1)
-                val_correct += (preds == labels).sum().item()
+                val_correct += (outputs.argmax(1) == labels).sum().item()
                 val_total   += imgs.size(0)
 
-        # Metrics
         t_loss = train_loss / train_total
         v_loss = val_loss   / val_total
         t_acc  = 100 * train_correct / train_total
         v_acc  = 100 * val_correct   / val_total
-        elapsed = time.time() - t0
 
         history["train_loss"].append(round(t_loss, 4))
         history["val_loss"].append(round(v_loss, 4))
@@ -238,38 +201,58 @@ def run(log_fn, hp_override=None):
             best_val_acc = v_acc
             best_epoch   = epoch
             patience_cnt = 0
-            torch.save(model.state_dict(), CKPT_PATH)
+            torch.save(model.state_dict(), ckpt_path)
             marker = " ✓ SAVED"
         else:
             patience_cnt += 1
 
         log_fn(
-            f"Epoch [{epoch:>3}/{hp['epochs']}] "
+            f"{prefix}Epoch [{epoch:>3}/{hp['epochs']}] "
             f"Loss: {t_loss:.4f}/{v_loss:.4f}  "
             f"Acc: {t_acc:.1f}%/{v_acc:.1f}%  "
-            f"({elapsed:.0f}s){marker}"
+            f"({time.time() - t0:.0f}s){marker}"
         )
 
-        # Early stopping
         if patience_cnt >= hp["patience"]:
-            log_fn(f"\nEarly stopping pada epoch {epoch} (patience={hp['patience']} tercapai).")
+            log_fn(f"\n{prefix}Early stopping pada epoch {epoch} "
+                   f"(patience={hp['patience']} tercapai).")
             break
 
-    log_fn(f"\nBest Val Accuracy : {best_val_acc:.2f}%  (epoch {best_epoch})")
-    log_fn(f"Checkpoint disimpan → {CKPT_PATH}")
+    log_fn(f"\n{prefix}Best Val Accuracy : {best_val_acc:.2f}%  (epoch {best_epoch})")
+    log_fn(f"{prefix}Checkpoint disimpan → {ckpt_path}")
 
-    # Simpan history
+    return {"best_val_acc": best_val_acc, "best_epoch": best_epoch, "history": history}
+
+
+def run(log_fn, hp_override=None):
+    """
+    Entry point GUI (Step 5).
+    hp_override: dict opsional untuk menimpa TRAIN_HP.
+    """
+    for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"), (SPLIT_PATH, "Step 3")]:
+        if not os.path.exists(path):
+            log_fn(f"ERROR: {os.path.basename(path)} tidak ditemukan. Jalankan {name} terlebih dahulu.")
+            raise FileNotFoundError(path)
+
+    hp = {**DEFAULT_CONFIG, **(hp_override or {})}
+    log_fn("Hyperparameter Training:")
+    for k, v in hp.items():
+        log_fn(f"  {k:<15}: {v}")
+    log_fn("")
+
+    result = train_one_run(hp, log_fn, ckpt_path=CKPT_PATH)
+    history = result["history"]
+
     with open(HISTORY_PATH, "w") as f:
         json.dump(history, f, indent=2)
 
-    # Plot curves
     log_fn("Membuat plot training curve...")
     _plot_curves(history, CURVE_PATH)
     log_fn(f"Chart tersimpan → {CURVE_PATH}")
 
     return {
-        "best_val_acc": best_val_acc,
-        "best_epoch":   best_epoch,
+        "best_val_acc": result["best_val_acc"],
+        "best_epoch":   result["best_epoch"],
         "history":      history,
         "chart_path":   CURVE_PATH,
     }

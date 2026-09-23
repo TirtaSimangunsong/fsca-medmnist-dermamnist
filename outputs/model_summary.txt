@@ -1,7 +1,7 @@
 Model: ResNet-18 + FSCA
 Total params   : 11,914,575
 Trainable      : 11,914,575
-FSCA params    : 742,152
+Attention params: 742,152
 n_classes      : 7
 
 Modules:

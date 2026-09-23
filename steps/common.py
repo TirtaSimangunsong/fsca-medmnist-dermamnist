@@ -1,0 +1,283 @@
+"""
+common.py - Utilitas Bersama Pipeline
+=======================================
+Fungsi yang dipakai lebih dari satu step:
+
+- resolve_device()            : pilih MPS / CUDA / CPU sesuai DEVICE_CONFIG
+- set_seed()                  : reproduktibilitas (random, numpy, torch)
+- build_transforms()          : transform train (augmentasi) / eval
+- build_dataloaders()         : DataLoader split resmi DermaMNIST + jumlah sampel per kelas
+- compute_loss_class_weights(): bobot Weighted Cross-Entropy (1/sqrt(n), 1/n, atau seragam)
+- evaluate()                  : metrik test (opsional TTA 8 arah + logit adjustment)
+- make_logit_adjustment()     : vektor tau * log(prior)
+- tune_logit_adjustment()     : sapuan tau di VALIDATION set
+
+Dipakai oleh: step5_training (train_one_run), step7_evaluation, step11_ablation.
+"""
+
+import os
+import sys
+import random
+
+import numpy as np
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from config import DATASET, AUGMENTATION, DEVICE_CONFIG, IMBALANCE
+
+
+def _noop(*_args, **_kwargs):
+    pass
+
+
+# =========================================================
+# DEVICE & SEED
+# =========================================================
+def resolve_device(log_fn=None):
+    import torch
+
+    log_fn = log_fn or _noop
+    pref = DEVICE_CONFIG.get("device", "auto")
+
+    if pref == "auto":
+        if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+            dev = "mps"
+        elif torch.cuda.is_available():
+            dev = "cuda"
+        else:
+            dev = "cpu"
+    else:
+        dev = pref
+
+    log_fn(f"Device: {dev}")
+    return torch.device(dev)
+
+
+def set_seed(seed):
+    import torch
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+# =========================================================
+# DATA
+# =========================================================
+def build_transforms(mean, std, train):
+    from torchvision import transforms
+
+    if not train:
+        return transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=mean, std=std),
+        ])
+
+    aug = AUGMENTATION
+    return transforms.Compose([
+        transforms.RandomHorizontalFlip(p=aug["horizontal_flip_p"]),
+        transforms.RandomVerticalFlip(p=aug["vertical_flip_p"]),
+        transforms.RandomRotation(degrees=aug["rotation_degrees"]),
+        transforms.ColorJitter(
+            brightness=aug["color_jitter"]["brightness"],
+            contrast=aug["color_jitter"]["contrast"],
+            saturation=aug["color_jitter"]["saturation"],
+        ),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=mean, std=std),
+    ])
+
+
+def build_dataloaders(mean, std, batch_size, n_classes,
+                      splits=("train", "val", "test"),
+                      train_augment=True, seed=None, log_fn=None):
+    """
+    Membangun DataLoader untuk split resmi DermaMNIST.
+
+    - Split "train" diacak (shuffle biasa, TANPA WeightedRandomSampler) dan
+      diberi augmentasi jika train_augment=True.
+    - Split lain memakai transform eval (tanpa augmentasi).
+    - Jika seed diberikan, urutan shuffle train ikut terkunci ke seed.
+
+    Return: (loaders: dict split -> DataLoader,
+             info:    dict {"class_counts": list[int] | None, "sizes": dict})
+    """
+    import torch
+    from torch.utils.data import DataLoader
+    from medmnist import DermaMNIST
+
+    log_fn = log_fn or _noop
+    loaders, sizes = {}, {}
+    class_counts = None
+
+    for split in splits:
+        is_train = split == "train"
+        ds = DermaMNIST(
+            split=split,
+            transform=build_transforms(mean, std, train=is_train and train_augment),
+            download=DATASET["download"],
+            size=DATASET["image_size"],
+        )
+
+        generator = None
+        if is_train and seed is not None:
+            generator = torch.Generator()
+            generator.manual_seed(seed)
+
+        loaders[split] = DataLoader(
+            ds, batch_size=batch_size, shuffle=is_train,
+            num_workers=0, generator=generator,
+        )
+        sizes[split] = len(ds)
+
+        if is_train:
+            labels = np.asarray(ds.labels).reshape(-1).astype(int)
+            class_counts = np.bincount(labels, minlength=n_classes).tolist()
+
+        log_fn(f"  {split:<5}: {len(ds):>5} sampel, {len(loaders[split])} batch")
+
+    return loaders, {"class_counts": class_counts, "sizes": sizes}
+
+
+def compute_loss_class_weights(class_counts, mode=None):
+    """
+    Bobot per kelas untuk nn.CrossEntropyLoss(weight=...).
+    Dinormalisasi agar RATA-RATA bobot = 1 (skala loss tetap sebanding
+    dengan CE biasa). Rumus identik dengan Step 3.
+    """
+    mode = mode or IMBALANCE["loss_weight_mode"]
+    counts = np.asarray(class_counts, dtype=float)
+
+    if mode == "inverse":
+        w = 1.0 / (counts + 1e-6)
+    elif mode == "sqrt":
+        w = 1.0 / np.sqrt(counts + 1e-6)
+    elif mode == "none":
+        w = np.ones_like(counts)
+    else:
+        raise ValueError(f"loss_weight_mode tidak dikenal: {mode}")
+
+    return w / w.mean()
+
+
+# =========================================================
+# EVALUASI
+# =========================================================
+def _forward(model, imgs, use_tta):
+    """Logit untuk satu batch. TTA 8 arah = 4 rotasi x (asli, flip horizontal)."""
+    import torch
+
+    if not use_tta:
+        return model(imgs)
+
+    outs = []
+    for k in range(4):
+        rot = torch.rot90(imgs, k, dims=(2, 3))
+        outs.append(model(rot))
+        outs.append(model(torch.flip(rot, dims=(3,))))
+    return torch.stack(outs, dim=0).mean(dim=0)
+
+
+def collect_logits(model, loader, device, use_tta=False):
+    """Jalankan model di seluruh loader. Return (logits [N,C], y_true [N]) numpy."""
+    import torch
+
+    model.eval()
+    all_logits, all_y = [], []
+    with torch.no_grad():
+        for imgs, labels in loader:
+            imgs = imgs.to(device)
+            logits = _forward(model, imgs, use_tta)
+            all_logits.append(logits.float().cpu().numpy())
+            all_y.append(labels.view(-1).long().numpy())
+    return np.concatenate(all_logits), np.concatenate(all_y)
+
+
+def _softmax(logits):
+    z = logits - logits.max(axis=1, keepdims=True)
+    e = np.exp(z)
+    return e / e.sum(axis=1, keepdims=True)
+
+
+def compute_metrics(logits, y_true, n_classes):
+    from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
+                                 f1_score, roc_auc_score)
+
+    probs = _softmax(logits)
+    y_pred = probs.argmax(axis=1)
+
+    try:
+        auc = roc_auc_score(y_true, probs, multi_class="ovr", average="macro",
+                            labels=list(range(n_classes)))
+    except ValueError:
+        auc = float("nan")   # mis. ada kelas yang tidak muncul di y_true
+
+    return {
+        "acc":          100.0 * accuracy_score(y_true, y_pred),
+        "balanced_acc": 100.0 * balanced_accuracy_score(y_true, y_pred),
+        "f1_weighted":  f1_score(y_true, y_pred, average="weighted", zero_division=0),
+        "f1_macro":     f1_score(y_true, y_pred, average="macro", zero_division=0),
+        "auc_macro":    float(auc),
+        "y_true":       y_true.tolist(),
+        "y_pred":       y_pred.tolist(),
+    }
+
+
+def make_logit_adjustment(class_counts, tau):
+    """
+    Vektor penyesuaian logit (Menon et al., 2021, post-hoc):
+        logit_adj = logit - tau * log(prior)
+    Return numpy [C] yang DIKURANGKAN dari logit.
+    """
+    counts = np.asarray(class_counts, dtype=float)
+    prior = counts / counts.sum()
+    return (float(tau) * np.log(prior + 1e-12)).astype(np.float32)
+
+
+def evaluate(model, loader, device, n_classes, use_tta=False, logit_adjust=None):
+    logits, y_true = collect_logits(model, loader, device, use_tta=use_tta)
+    if logit_adjust is not None:
+        logits = logits - np.asarray(logit_adjust, dtype=np.float32)[None, :]
+    return compute_metrics(logits, y_true, n_classes)
+
+
+def tune_logit_adjustment(model, val_loader, device, n_classes, class_counts,
+                          metric="balanced_acc", use_tta=False, log_fn=None,
+                          grid=None):
+    """
+    Pilih tau terbaik di VALIDATION set. Logit val dihitung sekali, lalu
+    setiap tau di grid hanya menggeser logit (murah).
+    Jika ada nilai metrik yang sama, tau terkecil yang dipilih.
+
+    Return: (best_tau: float, table: list[dict])
+    """
+    log_fn = log_fn or _noop
+    grid = grid if grid is not None else IMBALANCE.get("tau_grid", [0.0, 0.5, 1.0])
+
+    logits, y_true = collect_logits(model, val_loader, device, use_tta=use_tta)
+    return _sweep_tau(logits, y_true, n_classes, class_counts, grid, metric, log_fn)
+
+
+def _sweep_tau(logits, y_true, n_classes, class_counts, grid, metric, log_fn):
+    log_fn(f"Sapuan logit adjustment di VALIDATION (metrik: {metric})")
+    log_fn(f"  {'tau':>6} {'acc':>8} {'bal_acc':>8} {'f1_macro':>9}")
+
+    table, best_tau, best_score = [], 0.0, -np.inf
+    for tau in grid:
+        adj = make_logit_adjustment(class_counts, tau)
+        m = compute_metrics(logits - adj[None, :], y_true, n_classes)
+        row = {
+            "tau":          float(tau),
+            "acc":          round(float(m["acc"]), 4),
+            "balanced_acc": round(float(m["balanced_acc"]), 4),
+            "f1_macro":     round(float(m["f1_macro"]), 4),
+        }
+        table.append(row)
+        log_fn(f"  {tau:>6.2f} {row['acc']:>8.2f} {row['balanced_acc']:>8.2f} "
+               f"{row['f1_macro']:>9.4f}")
+        if m[metric] > best_score:
+            best_score, best_tau = m[metric], float(tau)
+
+    log_fn(f"  -> tau terpilih: {best_tau}")
+    return best_tau, table

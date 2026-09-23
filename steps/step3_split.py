@@ -12,7 +12,7 @@ import json
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import PATHS, DATASET, AUGMENTATION, ensure_dirs
+from config import PATHS, DATASET, AUGMENTATION, IMBALANCE, ensure_dirs
 
 OUTPUT_DIR   = PATHS["output_dir"]
 META_PATH    = PATHS["dataset_meta"]
@@ -108,7 +108,7 @@ def run(log_fn):
     #   "sqrt"    -> 1/sqrt(n)  (kompromi, DEFAULT)
     #   "inverse" -> 1/n        (WCE penuh, perilaku sebelumnya)
     #   "none"    -> bobot seragam
-    WEIGHT_MODE = "sqrt"
+    WEIGHT_MODE = IMBALANCE["loss_weight_mode"]
 
     if WEIGHT_MODE == "inverse":
         loss_class_weights = 1.0 / (class_counts + 1e-6)
