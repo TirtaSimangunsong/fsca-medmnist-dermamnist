@@ -205,7 +205,9 @@ EVAL_CONFIG = {
     "batch_size": 256,
     # Test-time augmentation 8 arah: rotasi 0/90/180/270 derajat,
     # masing-masing dengan dan tanpa horizontal flip. Logit dirata-rata.
-    "tta":        True,
+    # Default nonaktif: angka utama tanpa TTA agar sebanding dengan baseline
+    # resmi MedMNIST. Hasil run utama: TTA hanya +0.005 AUC, balanced acc -0.7.
+    "tta":        False,
 }
 
 
@@ -213,7 +215,9 @@ EVAL_CONFIG = {
 # EKSPERIMEN ABLASI MULTI-SEED (Step 11)
 # =========================================================
 EXPERIMENT = {
-    "attentions": ["none", "se", "eca", "cbam", "fsca"],
+    # Tahap 1: jawab Rumusan Masalah utama (kontribusi FSCA) dulu.
+    # Tahap 2 (opsional, bila waktu cukup): ["none", "se", "eca", "cbam", "fsca"]
+    "attentions": ["none", "fsca"],
     "seeds":      [0, 1, 2, 3, 4],
     "epochs":     TRAIN_HP["epochs"],
 }
