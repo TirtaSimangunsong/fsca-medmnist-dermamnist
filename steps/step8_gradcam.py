@@ -45,7 +45,8 @@ RINGKASAN PERBAIKAN dari versi sebelumnya
 7. Figure pembanding layer4 vs fsca4 — bukti visual langsung bahwa modul
    FSCA menggeser fokus model. Ini yang menjawab Rumusan Masalah poin 3.
 
-8. Device tidak lagi di-hardcode "cpu".
+8. Device dipilih lewat common.resolve_device() (DEVICE_CONFIG "auto":
+   MPS -> CUDA -> CPU), sama seperti Step 5, 6, 7, 10, dan 11.
 
 Output: outputs/gradcam_grid.png            (grid utama, multi-layer)
         outputs/gradcam_fsca_effect.png     (layer4 vs fsca4)
@@ -60,7 +61,7 @@ import json
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import PATHS, DATASET, DEVICE_CONFIG, ensure_dirs
+from config import PATHS, DATASET, ensure_dirs
 
 OUTPUT_DIR   = PATHS["output_dir"]
 GRADCAM_DIR  = PATHS["gradcam_dir"]
@@ -260,6 +261,7 @@ def run(log_fn):
 
     sys.path.insert(0, os.path.dirname(__file__))
     from step4_model import build_model
+    import common
 
     for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"),
                        (FINAL_MODEL, "Step 6")]:
@@ -276,13 +278,13 @@ def run(log_fn):
     mean, std = config["mean"], config["std"]
     img_size  = DATASET["image_size"]
 
-    device = torch.device(DEVICE_CONFIG.get("device", "cpu"))
-    log_fn(f"Device: {device}")
+    device = common.resolve_device(log_fn=log_fn)
 
     log_fn("Memuat model untuk Grad-CAM...")
     model = build_model(n_classes=n_classes, pretrained=False).to(device)
     model.load_state_dict(torch.load(FINAL_MODEL, map_location=device))
     model.eval()
+    log_fn(f"Model: ResNet-18 + {model.attention_name.upper()}")
 
     test_transform = transforms.Compose([
         transforms.ToTensor(),

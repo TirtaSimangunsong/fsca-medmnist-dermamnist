@@ -2,8 +2,14 @@
 Step 3 - Split Data
 =====================
 Menggunakan split resmi DermaMNIST (train/val/test) dengan transform
-yang sudah dikonfigurasi di Step 2. Menyimpan info split + class weights
-untuk menangani class imbalance saat training.
+yang sudah dikonfigurasi di Step 2. Menghitung bobot kelas untuk
+Weighted Cross-Entropy (IMBALANCE["loss_weight_mode"] di config.py) dan
+menyimpan info split + chart distribusi kelas.
+
+Catatan: pipeline TIDAK memakai WeightedRandomSampler. Kunci
+"class_weights" dan "sample_weights" di split_info.json hanya disimpan
+sebagai arsip; yang dipakai untuk loss adalah "loss_class_weights"
+(rumusnya identik dengan common.compute_loss_class_weights).
 """
 
 import os
@@ -25,8 +31,8 @@ CHART_PATH   = PATHS["split_distribution_chart"]
 
 def run(log_fn):
     """
-    Membangun DataLoader train/val/test dan menghitung class weights
-    untuk WeightedRandomSampler (menangani imbalance DermaMNIST).
+    Memuat split resmi train/val/test dan menghitung bobot kelas
+    untuk Weighted Cross-Entropy (menangani imbalance DermaMNIST).
     """
     try:
         import torch
@@ -81,14 +87,18 @@ def run(log_fn):
     log_fn(f"Val   : {n_val:,}  ({100*n_val/n_total:.1f}%)")
     log_fn(f"Test  : {n_test:,}  ({100*n_test/n_total:.1f}%)")
 
-    # ----- Hitung class weights -----
-    labels = np.array([train_ds[i][1].item() for i in range(n_train)])
+    # ----- Hitung jumlah sampel per kelas -----
+    # Label dibaca langsung dari array dataset (tanpa memuat & mengaugmentasi
+    # setiap citra); hasilnya identik dengan iterasi train_ds[i][1].
+    labels = np.asarray(train_ds.labels).reshape(-1).astype(int)
     class_map = meta["class_map"]
     n_classes = meta["n_classes"]
 
     class_counts = np.bincount(labels, minlength=n_classes)
+
+    # Arsip (tidak dipakai training): bobot invers ternormalisasi-jumlah
     class_weights = 1.0 / (class_counts + 1e-6)
-    class_weights /= class_weights.sum()   # normalize
+    class_weights /= class_weights.sum()
     sample_weights = class_weights[labels]
 
     # ----- Bobot loss untuk CrossEntropyLoss -----
@@ -104,7 +114,8 @@ def run(log_fn):
     # Akar invers menurunkan rasio menjadi ~7.6x - tetap membantu kelas
     # minoritas, tanpa menggeser batas keputusan sejauh itu.
     #
-    # Ganti WEIGHT_MODE untuk membandingkan kedua strategi di BAB IV:
+    # Ganti IMBALANCE["loss_weight_mode"] di config.py untuk membandingkan
+    # strategi di BAB IV:
     #   "sqrt"    -> 1/sqrt(n)  (kompromi, DEFAULT)
     #   "inverse" -> 1/n        (WCE penuh, perilaku sebelumnya)
     #   "none"    -> bobot seragam
@@ -127,7 +138,8 @@ def run(log_fn):
     log_fn("Distribusi kelas di Training Set:")
     for idx in range(n_classes):
         name = class_map[str(idx)]
-        log_fn(f"  [{idx}] {name:<40}: {class_counts[idx]:>5} sampel  (weight: {class_weights[idx]:.4f})")
+        log_fn(f"  [{idx}] {name:<40}: {class_counts[idx]:>5} sampel  "
+               f"(bobot loss: {loss_class_weights[idx]:.4f})")
 
     # ----- Buat chart distribusi -----
     log_fn("Membuat chart distribusi kelas...")
@@ -170,19 +182,21 @@ def run(log_fn):
     plt.close()
 
     # ----- Simpan info split -----
+    ensure_dirs()
     split_info = {
-    "n_train":             n_train,
-    "n_val":                n_val,
-    "n_test":               n_test,
-    "class_counts":         class_counts.tolist(),
-    "class_weights":        class_weights.tolist(),
-    "sample_weights":       sample_weights.tolist(),   # boleh dibiarkan tersimpan meski tak dipakai lagi
-    "loss_class_weights":   loss_class_weights.tolist(),  # <- key yang dicari Step 5
-    "chart_path":           CHART_PATH,
+        "n_train":            n_train,
+        "n_val":              n_val,
+        "n_test":             n_test,
+        "class_counts":       class_counts.tolist(),
+        "loss_weight_mode":   WEIGHT_MODE,
+        "loss_class_weights": loss_class_weights.tolist(),  # bobot yang dipakai Weighted CE
+        "class_weights":      class_weights.tolist(),       # arsip, tidak dipakai
+        "sample_weights":     sample_weights.tolist(),      # arsip, tidak dipakai
+        "chart_path":         CHART_PATH,
     }
     with open(SPLIT_PATH, "w") as f:
         json.dump(split_info, f, indent=2)
 
-    log_fn(f"Split info tersimpan → {SPLIT_PATH}")
-    log_fn(f"Chart tersimpan      → {CHART_PATH}")
+    log_fn(f"Split info tersimpan -> {SPLIT_PATH}")
+    log_fn(f"Chart tersimpan      -> {CHART_PATH}")
     return split_info

@@ -124,12 +124,12 @@ AUGMENTATION = {
 # HYPERPARAMETER — STEP 5 (TRAINING AWAL / FASE 1)
 # =========================================================
 TRAIN_HP = {
-    "epochs":       30,
+    "epochs":       100,
     "batch_size":   64,
     "lr":           1e-3,
     "weight_decay": 1e-4,
-    "patience":     5,      # early stopping
-    "seed":         42,     # seed run utama (Step 11 memakai EXPERIMENT["seeds"])
+    "patience":     100,    # = epochs -> early stopping praktis nonaktif
+    "seed":         42,
 }
 
 
@@ -137,6 +137,7 @@ TRAIN_HP = {
 # HYPERPARAMETER — STEP 6 (FINETUNING / FASE 2)
 # =========================================================
 FINETUNE_HP = {
+    "enabled":         False,
     "epochs":          15,
     "batch_size":       32,
     "lr":               1e-4,   # 10x lebih kecil dari TRAIN_HP["lr"]

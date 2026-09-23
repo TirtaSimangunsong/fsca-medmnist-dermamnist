@@ -4,6 +4,13 @@ Step 10 - Inference pada Citra Baru
 Memungkinkan pengguna mengunggah citra dermatoskopi baru
 dan mendapatkan prediksi kelas + confidence score + Grad-CAM overlay.
 
+Konsistensi dengan step lain:
+- Device dipilih lewat common.resolve_device() (DEVICE_CONFIG "auto").
+- Grad-CAM dipasang pada `fsca4` (SESUDAH modul atensi), sama dengan
+  Step 8, sehingga heatmap memuat kontribusi FSCA.
+- Prediksi memakai satu forward pass (tanpa TTA / logit adjustment),
+  sesuai kondisi pemakaian model pada satu citra.
+
 Output: outputs/inference_result.png
 """
 
@@ -19,6 +26,9 @@ META_PATH     = PATHS["dataset_meta"]
 CONFIG_PATH   = PATHS["preprocess_config"]
 FINAL_MODEL   = PATHS["final_model"]
 RESULT_PATH   = PATHS["inference_result_chart"]
+
+# Lapisan target Grad-CAM (harus sama dengan hook utama di Step 8)
+GRADCAM_LAYER = "fsca4"
 
 
 def predict_image(image_path, log_fn):
@@ -39,6 +49,7 @@ def predict_image(image_path, log_fn):
     sys.path.insert(0, os.path.dirname(__file__))
     from step4_model import build_model
     from step8_gradcam import GradCAM
+    import common
 
     for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"), (FINAL_MODEL, "Step 6")]:
         if not os.path.exists(path):
@@ -52,7 +63,7 @@ def predict_image(image_path, log_fn):
     class_map = meta["class_map"]
     mean, std = config["mean"], config["std"]
 
-    device = torch.device("cpu")
+    device = common.resolve_device(log_fn=log_fn)
     model  = build_model(n_classes=n_classes, pretrained=False).to(device)
     model.load_state_dict(torch.load(FINAL_MODEL, map_location=device))
     model.eval()
@@ -93,9 +104,12 @@ def predict_image(image_path, log_fn):
     for rank, idx in enumerate(top3, 1):
         log_fn(f"  #{rank}  [{idx}] {class_map[str(idx)]:<40} : {probs[idx]*100:.2f}%")
 
-    # Grad-CAM
-    grad_cam = GradCAM(model, target_layer=model.layer4)
+    # Grad-CAM pada fsca4 (sesudah modul atensi), sama dengan Step 8
+    grad_cam = GradCAM(model, target_layer=getattr(model, GRADCAM_LAYER))
     cam, _ = grad_cam.generate(img_tensor, target_class=int(pred))
+    grad_cam.remove()
+    if grad_cam.last_is_dead:
+        log_fn(f"PERINGATAN: CAM {GRADCAM_LAYER} kosong (tidak ada aktivasi positif).")
 
     # Visualisasi
     img_disp = np.array(pil_img.resize((img_size, img_size), Image.NEAREST)) / 255.0
@@ -103,32 +117,9 @@ def predict_image(image_path, log_fn):
     heatmap  = _cmap(cam)[:, :, :3]
     overlay  = (0.55 * img_disp + 0.45 * heatmap).clip(0, 1)
 
-    fig, axes = plt.subplots(1, 3, figsize=(10, 3.5))
-    fig.patch.set_facecolor("#1a1a1a")
-
-    titles = ["Input (resized 28×28)", "Grad-CAM Heatmap", f"Overlay\n{pred_class}\n({confidence:.1f}%)"]
-    imgs   = [img_disp, heatmap, overlay]
-    for ax, img, title in zip(axes, imgs, titles):
-        ax.imshow(img, interpolation="nearest")
-        ax.set_title(title, color="white", fontsize=9)
-        ax.axis("off")
-        ax.set_facecolor("#1a1a1a")
-
-    # Bar chart probabilitas
-    fig2, ax = plt.subplots(figsize=(7, 3.5))
-    fig2.patch.set_facecolor("#1a1a1a")
-    ax.set_facecolor("#1a1a1a")
-    cls_names = [class_map[str(i)] for i in range(n_classes)]
+    cls_names  = [class_map[str(i)] for i in range(n_classes)]
     bar_colors = ["#4fc3f7" if i == pred else "#555555" for i in range(n_classes)]
-    ax.barh(cls_names, probs * 100, color=bar_colors, edgecolor="#333")
-    ax.set_xlabel("Probabilitas (%)", color="white")
-    ax.set_title(f"Distribusi Probabilitas\nPrediksi: {pred_class} ({confidence:.1f}%)",
-                 color="white", fontweight="bold")
-    ax.tick_params(colors="white")
-    plt.setp(ax.get_yticklabels(), color="white", fontsize=8)
-    for spine in ax.spines.values(): spine.set_color("#555")
 
-    # Gabungkan dua figure
     fig_combined, axes_c = plt.subplots(2, 3, figsize=(13, 7))
     fig_combined.patch.set_facecolor("#1a1a1a")
     fig_combined.suptitle(f"Inference Result — {os.path.basename(image_path)}",
@@ -136,9 +127,12 @@ def predict_image(image_path, log_fn):
 
     for ax in axes_c.flat: ax.axis("off"); ax.set_facecolor("#1a1a1a")
 
-    axes_c[0, 0].imshow(img_disp); axes_c[0, 0].set_title("Input 28×28", color="white", fontsize=9); axes_c[0, 0].axis("off")
-    axes_c[0, 1].imshow(heatmap);  axes_c[0, 1].set_title("Grad-CAM",    color="white", fontsize=9); axes_c[0, 1].axis("off")
-    axes_c[0, 2].imshow(overlay);  axes_c[0, 2].set_title(f"Overlay\n{pred_class}", color="white", fontsize=9); axes_c[0, 2].axis("off")
+    axes_c[0, 0].imshow(img_disp, interpolation="nearest")
+    axes_c[0, 0].set_title(f"Input {img_size}×{img_size}", color="white", fontsize=9)
+    axes_c[0, 1].imshow(heatmap, interpolation="nearest")
+    axes_c[0, 1].set_title(f"Grad-CAM ({GRADCAM_LAYER})", color="white", fontsize=9)
+    axes_c[0, 2].imshow(overlay, interpolation="nearest")
+    axes_c[0, 2].set_title(f"Overlay\n{pred_class} ({confidence:.1f}%)", color="white", fontsize=9)
 
     # Prob bar chart di baris bawah (span 3 kolom)
     ax_bar = fig_combined.add_subplot(2, 1, 2)
@@ -149,14 +143,14 @@ def predict_image(image_path, log_fn):
     ax_bar.tick_params(colors="white")
     plt.setp(ax_bar.get_yticklabels(), color="white", fontsize=8)
     for spine in ax_bar.spines.values(): spine.set_color("#555")
-    for i, (name, prob) in enumerate(zip(cls_names, probs)):
+    for i, prob in enumerate(probs):
         ax_bar.text(prob*100 + 0.3, i, f"{prob*100:.1f}%", va="center", color="white", fontsize=8)
 
     plt.tight_layout()
     plt.savefig(RESULT_PATH, dpi=120, bbox_inches="tight", facecolor="#1a1a1a")
     plt.close("all")
 
-    log_fn(f"\nHasil inference tersimpan → {RESULT_PATH}")
+    log_fn(f"\nHasil inference tersimpan -> {RESULT_PATH}")
     return {
         "pred_class": pred_class,
         "pred_idx":   int(pred),

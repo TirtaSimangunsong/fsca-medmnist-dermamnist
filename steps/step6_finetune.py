@@ -1,10 +1,15 @@
 """
-Step 6 - Finetuning & Hyperparameter Tuning
-=============================================
+Step 6 - Finetuning (Fase 2)
+==============================
 Melakukan fine-tuning dari checkpoint Step 5 dengan:
-- Learning rate lebih kecil (1/10 dari training awal)
-- Unfreeze selektif: hanya layer3, layer4, FSCA, fc
-- Label smoothing pada CrossEntropyLoss
+- Learning rate lebih kecil (FINETUNE_HP["lr"], 1/10 dari Fase 1)
+- Unfreeze selektif: hanya layer3, layer4, fsca3, fsca4, fc
+  (FINETUNE_HP["unfreeze_keys"]); layer lain dibekukan
+- Weighted Cross-Entropy (bobot 1/sqrt(n), sama persis dengan Fase 1)
+  + label smoothing (FINETUNE_HP["label_smoothing"])
+- AdamW + CosineAnnealingLR, early stopping, checkpoint terbaik (val accuracy)
+- Augmentasi dan DataLoader identik dengan Step 5 (lewat steps/common.py);
+  TIDAK memakai WeightedRandomSampler
 - Simpan model final sebagai 'ResNet18_FSCA_DermaMNIST_Best.pth'
 
 Output: outputs/ResNet18_FSCA_DermaMNIST_Best.pth
@@ -18,18 +23,15 @@ import time
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import PATHS, DATASET, AUGMENTATION, FINETUNE_HP
+from config import PATHS, FINETUNE_HP, TRAIN_HP, IMBALANCE
 
-OUTPUT_DIR      = PATHS["output_dir"]
-META_PATH       = PATHS["dataset_meta"]
-CONFIG_PATH     = PATHS["preprocess_config"]
-SPLIT_PATH      = PATHS["split_info"]
-CKPT_PATH       = PATHS["checkpoint_best"]
+OUTPUT_DIR       = PATHS["output_dir"]
+META_PATH        = PATHS["dataset_meta"]
+CONFIG_PATH      = PATHS["preprocess_config"]
+CKPT_PATH        = PATHS["checkpoint_best"]
 FINAL_MODEL_PATH = PATHS["final_model"]
-HISTORY_PATH    = PATHS["finetune_history"]
-CURVE_PATH      = PATHS["finetune_curve_chart"]
-
-# FINETUNE_HP kini berasal dari config.py — termasuk unfreeze_keys
+HISTORY_PATH     = PATHS["finetune_history"]
+CURVE_PATH       = PATHS["finetune_curve_chart"]
 
 
 def _freeze_except(model, unfreeze_keys):
@@ -38,101 +40,117 @@ def _freeze_except(model, unfreeze_keys):
         param.requires_grad = any(k in name for k in unfreeze_keys)
 
 
+def _plot_curves(history, save_path):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    epochs = range(1, len(history["train_loss"]) + 1)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig.patch.set_facecolor("#1a1a1a")
+    for ax in axes:
+        ax.set_facecolor("#1a1a1a")
+        ax.tick_params(colors="white")
+        for spine in ax.spines.values(): spine.set_color("#555")
+
+    axes[0].plot(epochs, history["train_loss"], "#4fc3f7", label="Train", linewidth=2)
+    axes[0].plot(epochs, history["val_loss"],   "#ef5350", label="Val",   linewidth=2)
+    axes[0].set_title("Finetune Loss Curve", color="white", fontweight="bold")
+    axes[0].set_xlabel("Epoch", color="white"); axes[0].set_ylabel("Loss", color="white")
+    axes[0].legend(facecolor="#333", labelcolor="white")
+
+    axes[1].plot(epochs, history["train_acc"], "#4fc3f7", label="Train", linewidth=2)
+    axes[1].plot(epochs, history["val_acc"],   "#ef5350", label="Val",   linewidth=2)
+    axes[1].set_title("Finetune Accuracy Curve", color="white", fontweight="bold")
+    axes[1].set_xlabel("Epoch", color="white"); axes[1].set_ylabel("Accuracy (%)", color="white")
+    axes[1].legend(facecolor="#333", labelcolor="white")
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=120, bbox_inches="tight", facecolor="#1a1a1a")
+    plt.close()
+
+
 def run(log_fn):
     import torch
     import torch.nn as nn
     from torch.optim import AdamW
     from torch.optim.lr_scheduler import CosineAnnealingLR
-    from torch.utils.data import DataLoader, WeightedRandomSampler
-    from torchvision import transforms
-    from medmnist import DermaMNIST
 
     sys.path.insert(0, os.path.dirname(__file__))
     from step4_model import build_model
+    import common
 
     for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"),
-                       (SPLIT_PATH, "Step 3"), (CKPT_PATH, "Step 5")]:
+                       (CKPT_PATH, "Step 5")]:
         if not os.path.exists(path):
             log_fn(f"ERROR: {os.path.basename(path)} tidak ditemukan. Jalankan {name} terlebih dahulu.")
             raise FileNotFoundError(path)
+        if not FINETUNE_HP.get("enabled", True):
+            import shutil
+            shutil.copyfile(CKPT_PATH, FINAL_MODEL_PATH)
+            if os.path.exists(HISTORY_PATH):
+                os.remove(HISTORY_PATH)          # buang history finetune lama agar Step 9 tidak memakai data basi
+            log_fn("Fine-tuning dinonaktifkan (FINETUNE_HP['enabled']=False).")
+            log_fn(f"Checkpoint Fase 1 disalin sebagai model final -> {FINAL_MODEL_PATH}")
+            return {"best_val_acc": None, "best_epoch": None,
+                    "final_model": FINAL_MODEL_PATH,
+                    "chart_path": PATHS["training_curve_chart"]}
 
-    with open(META_PATH)   as f: meta       = json.load(f)
-    with open(CONFIG_PATH) as f: config     = json.load(f)
-    with open(SPLIT_PATH)  as f: split_info = json.load(f)
-
+    with open(META_PATH)   as f: meta   = json.load(f)
+    with open(CONFIG_PATH) as f: config = json.load(f)
     n_classes = meta["n_classes"]
-    device    = torch.device("cpu")
 
-    # Load checkpoint
+    seed = TRAIN_HP.get("seed")
+    if seed is not None:
+        common.set_seed(seed)
+        log_fn(f"Seed: {seed}")
+
+    device = common.resolve_device(log_fn=log_fn)
+
+    # Load checkpoint Fase 1
     log_fn("Memuat checkpoint dari Step 5...")
     model = build_model(n_classes=n_classes, pretrained=False).to(device)
     model.load_state_dict(torch.load(CKPT_PATH, map_location=device))
-    log_fn("Checkpoint berhasil dimuat.")
+    log_fn(f"Checkpoint berhasil dimuat (atensi: {model.attention_name.upper()}).")
 
-    # Freeze layer awal, unfreeze layer3/4, FSCA, fc (key dari config.py)
+    # Freeze layer awal, unfreeze layer3/4, fsca3/4, fc (key dari config.py)
     unfreeze_keys = FINETUNE_HP["unfreeze_keys"]
     _freeze_except(model, unfreeze_keys)
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     log_fn(f"Parameter trainable setelah freeze: {trainable:,}")
     log_fn(f"Layer yang di-unfreeze: {unfreeze_keys}")
 
-    # DataLoaders
-    mean, std = config["mean"], config["std"]
-    bs = FINETUNE_HP["batch_size"]
-    img_size = DATASET["image_size"]
-    aug = AUGMENTATION
+    # DataLoader (identik dengan Step 5, batch size dari FINETUNE_HP)
+    log_fn("Memuat DataLoader...")
+    loaders, dinfo = common.build_dataloaders(
+        mean=config["mean"], std=config["std"],
+        batch_size=FINETUNE_HP["batch_size"], n_classes=n_classes,
+        splits=("train", "val"), train_augment=True, seed=seed, log_fn=log_fn,
+    )
+    train_loader, val_loader = loaders["train"], loaders["val"]
 
-    train_transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(aug["horizontal_flip_p"]),
-        transforms.RandomVerticalFlip(aug["vertical_flip_p"]),
-        transforms.RandomRotation(aug["rotation_degrees"]),
-        transforms.ColorJitter(
-            aug["color_jitter"]["brightness"],
-            aug["color_jitter"]["contrast"],
-            aug["color_jitter"]["saturation"],
-        ),
-        transforms.ToTensor(),
-        transforms.Normalize(mean, std),
-    ])
-    eval_transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean, std),
-    ])
-
-    train_ds = DermaMNIST(split="train", transform=train_transform, download=DATASET["download"], size=img_size)
-    val_ds   = DermaMNIST(split="val",   transform=eval_transform,  download=DATASET["download"], size=img_size)
-
-    train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, num_workers=0)
-    val_loader   = DataLoader(val_ds,   batch_size=bs, shuffle=False,   num_workers=0)
-
-    # PERBAIKAN 1 — kunci bobot yang salah
-    # -------------------------------------
-    # Sebelumnya memakai split_info["class_weights"], yang dinormalisasi agar
-    # JUMLAHnya 1 (rata-rata ~0.14). Step 5 memakai "loss_class_weights" yang
-    # dinormalisasi agar RATA-RATAnya 1. Akibatnya loss Phase 2 terskala ~7x
-    # lebih kecil dari Phase 1; digabung LR yang sudah 10x lebih kecil,
-    # fine-tuning praktis tidak menggerakkan bobot sama sekali.
-    class_weights_tensor = torch.tensor(split_info["loss_class_weights"], dtype=torch.float).to(device)
-
-    # PERBAIKAN 2 — label smoothing tidak pernah dipasang
-    # ---------------------------------------------------
-    # FINETUNE_HP["label_smoothing"] ada di config dan disebut di docstring,
-    # tetapi tidak pernah diteruskan ke nn.CrossEntropyLoss.
+    # Loss: bobot kelas SAMA dengan Fase 1 (rata-rata bobot = 1), plus label smoothing
+    mode = IMBALANCE["loss_weight_mode"]
+    weights = common.compute_loss_class_weights(dinfo["class_counts"], mode)
+    class_weights_tensor = torch.tensor(weights, dtype=torch.float32).to(device)
     criterion = nn.CrossEntropyLoss(
         weight=class_weights_tensor,
         label_smoothing=FINETUNE_HP["label_smoothing"],
     )
+    log_fn(f"Loss: Weighted CE (mode={mode}) + label smoothing "
+           f"{FINETUNE_HP['label_smoothing']}")
+
     optimizer = AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=FINETUNE_HP["lr"],
-        weight_decay=FINETUNE_HP["weight_decay"]
+        weight_decay=FINETUNE_HP["weight_decay"],
     )
     scheduler = CosineAnnealingLR(optimizer, T_max=FINETUNE_HP["epochs"])
 
     history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": []}
     best_val_acc, patience_cnt, best_epoch = 0.0, 0, 0
 
-    log_fn(f"\nHyperparameter Finetuning:")
+    log_fn("\nHyperparameter Finetuning:")
     for k, v in FINETUNE_HP.items():
         if k == "unfreeze_keys":
             continue
@@ -147,7 +165,7 @@ def run(log_fn):
         t_loss, t_correct, t_total = 0.0, 0, 0
         for imgs, labels in train_loader:
             imgs   = imgs.to(device)
-            labels = labels.squeeze(1).long().to(device)
+            labels = labels.view(-1).long().to(device)
             optimizer.zero_grad()
             out  = model(imgs)
             loss = criterion(out, labels)
@@ -163,7 +181,7 @@ def run(log_fn):
         with torch.no_grad():
             for imgs, labels in val_loader:
                 imgs   = imgs.to(device)
-                labels = labels.squeeze(1).long().to(device)
+                labels = labels.view(-1).long().to(device)
                 out  = model(imgs)
                 loss = criterion(out, labels)
                 v_loss    += loss.item() * imgs.size(0)
@@ -198,41 +216,14 @@ def run(log_fn):
             break
 
     log_fn(f"\nBest Val Accuracy (Finetune): {best_val_acc:.2f}%  (epoch {best_epoch})")
-    log_fn(f"Model final tersimpan → {FINAL_MODEL_PATH}")
+    log_fn(f"Model final tersimpan -> {FINAL_MODEL_PATH}")
 
     with open(HISTORY_PATH, "w") as f:
         json.dump(history, f, indent=2)
 
-    # Plot
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    _plot_curves(history, CURVE_PATH)
+    log_fn(f"Chart tersimpan -> {CURVE_PATH}")
 
-    epochs = range(1, len(history["train_loss"]) + 1)
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    fig.patch.set_facecolor("#1a1a1a")
-    for ax in axes:
-        ax.set_facecolor("#1a1a1a")
-        ax.tick_params(colors="white")
-        for spine in ax.spines.values(): spine.set_color("#555")
-
-    axes[0].plot(epochs, history["train_loss"], "#4fc3f7", label="Train", linewidth=2)
-    axes[0].plot(epochs, history["val_loss"],   "#ef5350", label="Val",   linewidth=2)
-    axes[0].set_title("Finetune Loss Curve", color="white", fontweight="bold")
-    axes[0].set_xlabel("Epoch", color="white"); axes[0].set_ylabel("Loss", color="white")
-    axes[0].legend(facecolor="#333", labelcolor="white")
-
-    axes[1].plot(epochs, history["train_acc"], "#4fc3f7", label="Train", linewidth=2)
-    axes[1].plot(epochs, history["val_acc"],   "#ef5350", label="Val",   linewidth=2)
-    axes[1].set_title("Finetune Accuracy Curve", color="white", fontweight="bold")
-    axes[1].set_xlabel("Epoch", color="white"); axes[1].set_ylabel("Accuracy (%)", color="white")
-    axes[1].legend(facecolor="#333", labelcolor="white")
-
-    plt.tight_layout()
-    plt.savefig(CURVE_PATH, dpi=120, bbox_inches="tight", facecolor="#1a1a1a")
-    plt.close()
-
-    log_fn(f"Chart tersimpan → {CURVE_PATH}")
     return {
         "best_val_acc":   best_val_acc,
         "best_epoch":     best_epoch,
