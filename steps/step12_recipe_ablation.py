@@ -12,7 +12,7 @@ dimatikan, masing-masing 5 seed (RECIPE_ABLATION di config.py):
   no_aug       - augmentasi
   no_wce       - Weighted CE (pakai CE biasa)
   adam_step    Adam + MultiStep (resmi) menggantikan AdamW + cosine
-  official     semua dimatikan + batch 128, tanpa dropout = resep resmi MedMNIST v2
+  official     semua dimatikan + batch 128, tanpa dropout, 100 epoch = resep resmi MedMNIST v2
 
 Selisih (full - varian) per seed = kontribusi komponen tersebut.
 Selisih (full - official) = total kenaikan dari resep.
@@ -22,7 +22,8 @@ sama di semua varian sehingga tidak memengaruhi perbandingan antar varian.
 
 Semua varian memakai train_one_run() dari Step 5 (aturan pemilihan
 checkpoint, seed, dan evaluasi identik). Hasil "full" memakai ulang
-checkpoint Step 11 (attention="none") bila sudah ada.
+checkpoint Step 11 (attention="none") bila ada DAN resepnya sama; checkpoint
+dari resep lain tidak pernah dipakai diam-diam (common.reusable).
 
 Output: outputs/recipe_ablation_report.json
         outputs/recipe_ablation_comparison.png
@@ -88,25 +89,39 @@ def _evaluate(ckpt, attention, log_fn):
     }
 
 
-def _find_checkpoint(variant, seed, epochs, select_metric, attention):
+def _variant_hp(variant, seed, epochs):
+    """hp lengkap sebuah varian. Varian boleh menimpa epochs (mis. "official" = 100)."""
+    override = RECIPE_ABLATION["variants"][variant]
+    return {**TRAIN_HP, "epochs": epochs, "seed": seed, **override}
+
+
+def _find_checkpoint(variant, seed, epochs, select_metric, attention, log_fn=None, retire=True):
     """
-    Lokasi checkpoint varian. Untuk "full" dengan attention="none", checkpoint
-    Step 11 dipakai ulang bila ada (resep dan seed identik).
-    Return (ckpt, history_path, reused: bool).
+    Lokasi checkpoint varian + apakah sudah bisa dipakai (resep cocok).
+    Untuk "full" dengan attention="none", checkpoint Step 11 dipakai ulang
+    bila ada dan resepnya sama.
+    Return (ckpt, history_path, reused_from_step11: bool, ready: bool).
     """
-    name = _run_name(variant, seed, epochs, select_metric)
+    from step5_training import resolve_recipe
+    import common
+
+    hp = _variant_hp(variant, seed, epochs)
+    expected = resolve_recipe(hp)
+    name = _run_name(variant, seed, hp["epochs"], select_metric)
     own_ckpt = os.path.join(OUT_DIR, f"{name}.pth")
     own_hist = os.path.join(OUT_DIR, f"{name}.history.json")
-    if os.path.exists(own_ckpt):
-        return own_ckpt, own_hist, False
+    if common.reusable(own_ckpt, own_hist, expected, log_fn, retire=retire):
+        return own_ckpt, own_hist, False, True
 
     if variant == "full" and attention == "none":
-        s11 = f"none_seed{seed}_ep{epochs}_{select_metric}"
+        s11 = f"none_seed{seed}_ep{hp['epochs']}_{select_metric}"
         s11_ckpt = os.path.join(PATHS["ablation_dir"], f"{s11}.pth")
-        if os.path.exists(s11_ckpt):
-            return s11_ckpt, os.path.join(PATHS["ablation_dir"], f"{s11}.history.json"), True
+        s11_hist = os.path.join(PATHS["ablation_dir"], f"{s11}.history.json")
+        # Checkpoint Step 11 tidak di-.stale-kan dari sini (milik Step 11).
+        if common.reusable(s11_ckpt, s11_hist, expected, log_fn, retire=False):
+            return s11_ckpt, s11_hist, True, True
 
-    return own_ckpt, own_hist, False
+    return own_ckpt, own_hist, False, False
 
 
 def _per_class_table(summary, variants, labels, log_fn):
@@ -165,7 +180,8 @@ def run(log_fn, variants=None, seeds=None, epochs=None):
     durations = []
 
     for i, (variant, seed) in enumerate(combos, 1):
-        ckpt, hist_p, reused = _find_checkpoint(variant, seed, epochs, select_metric, attention)
+        ckpt, hist_p, reused, ready = _find_checkpoint(variant, seed, epochs, select_metric,
+                                                       attention, log_fn)
         partial = ckpt.replace(".pth", ".partial.pth")
 
         log_fn("-" * 78)
@@ -173,7 +189,7 @@ def run(log_fn, variants=None, seeds=None, epochs=None):
         log_fn("-" * 78)
 
         best_epoch = None
-        if os.path.exists(ckpt):
+        if ready:
             src = "Step 11" if reused else "run sebelumnya"
             log_fn(f"Checkpoint sudah ada ({src}), training dilewati: {os.path.basename(ckpt)}")
             if os.path.exists(hist_p):
@@ -184,7 +200,7 @@ def run(log_fn, variants=None, seeds=None, epochs=None):
                 log_fn("Ditemukan run terputus (.partial) - diulang dari awal.")
                 os.remove(partial)
             t_run = time.time()
-            hp = {**TRAIN_HP, "epochs": epochs, "seed": seed, **all_variants[variant]}
+            hp = _variant_hp(variant, seed, epochs)
             result = train_one_run(hp, log_fn, ckpt_path=partial, attention=attention,
                                    seed=seed, tag=f"{variant}/s{seed}")
             os.replace(partial, ckpt)
@@ -200,7 +216,7 @@ def run(log_fn, variants=None, seeds=None, epochs=None):
 
         remaining = sum(
             1 for v, s in combos[i:]
-            if not os.path.exists(_find_checkpoint(v, s, epochs, select_metric, attention)[0])
+            if not _find_checkpoint(v, s, epochs, select_metric, attention, retire=False)[3]
         )
         if durations and remaining:
             eta = np.mean(durations) * remaining / 60

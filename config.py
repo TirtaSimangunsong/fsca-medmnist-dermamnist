@@ -81,6 +81,11 @@ PATHS = {
     "recipe_ablation_report": os.path.join(OUTPUT_DIR, "recipe_ablation_report.json"),
     "recipe_ablation_chart":  os.path.join(OUTPUT_DIR, "recipe_ablation_comparison.png"),
 
+    # Uji resep (Step 13): dipilih HANYA berdasarkan validasi
+    "recipe_tuning_dir":    os.path.join(OUTPUT_DIR, "recipe_tuning"),
+    "recipe_tuning_report": os.path.join(OUTPUT_DIR, "recipe_tuning_report.json"),
+    "recipe_tuning_chart":  os.path.join(OUTPUT_DIR, "recipe_tuning_val_auc.png"),
+
     # Chart / visualisasi (PNG)
     "split_distribution_chart": os.path.join(OUTPUT_DIR, "split_distribution.png"),
     "training_curve_chart":     os.path.join(OUTPUT_DIR, "training_curve.png"),
@@ -239,6 +244,32 @@ EXPERIMENT = {
 
 
 # =========================================================
+# UJI RESEP (Step 13) - dijalankan SEBELUM resep dikunci
+# =========================================================
+# Membandingkan beberapa kandidat resep untuk ResNet-18 tanpa modul atensi,
+# masing-masing beberapa seed. Pemenang dipilih HANYA dari rata-rata val AUC
+# (data test tidak dipakai sama sekali). Aturan ditetapkan sebelum run:
+#   1. pilih kandidat dengan rata-rata val AUC tertinggi;
+#   2. bila selisihnya dengan kandidat lain <= tie_tolerance, kandidat
+#      dengan epoch lebih sedikit yang dipilih (lebih murah, hasil setara).
+RECIPE_TUNING = {
+    "attention": "none",
+    "seeds":     [0, 1, 2],
+    "candidates": {
+        "e100_wd1e-4": {"epochs": 100, "weight_decay": 1e-4},   # resep saat ini
+        "e40_wd1e-4":  {"epochs": 40,  "weight_decay": 1e-4},
+        "e40_wd5e-2":  {"epochs": 40,  "weight_decay": 0.05},
+    },
+    "labels": {
+        "e100_wd1e-4": "100 epoch, weight decay 0,0001 (saat ini)",
+        "e40_wd1e-4":  "40 epoch, weight decay 0,0001",
+        "e40_wd5e-2":  "40 epoch, weight decay 0,05",
+    },
+    "tie_tolerance": 0.001,
+}
+
+
+# =========================================================
 # ABLASI RESEP TRAINING (Step 12)
 # =========================================================
 # ResNet-18 tanpa modul atensi. Setiap varian = resep utama dengan SATU
@@ -257,7 +288,7 @@ RECIPE_ABLATION = {
         "adam_step":   {"optimizer": "adam", "scheduler": "multistep", "weight_decay": 0.0},
         "official":    {"pretrained": False, "augment": False, "loss_weight_mode": "none",
                         "optimizer": "adam", "scheduler": "multistep", "weight_decay": 0.0,
-                        "batch_size": 128, "dropout_p": 0.0},
+                        "batch_size": 128, "dropout_p": 0.0, "epochs": 100},
     },
     "labels": {
         "full":        "Resep lengkap",
@@ -290,6 +321,7 @@ def ensure_dirs():
     os.makedirs(PATHS["png_dir"], exist_ok=True)
     os.makedirs(PATHS["ablation_dir"], exist_ok=True)
     os.makedirs(PATHS["recipe_ablation_dir"], exist_ok=True)
+    os.makedirs(PATHS["recipe_tuning_dir"], exist_ok=True)
 
 
 def get_png_subdir(step_name):

@@ -429,3 +429,62 @@ def per_class_recall(y_true, y_pred, n_classes):
     r = recall_score(y_true, y_pred, labels=list(range(n_classes)),
                      average=None, zero_division=0)
     return [float(100.0 * v) for v in r]
+
+
+# =========================================================
+# PEMAKAIAN ULANG CHECKPOINT YANG AMAN
+# =========================================================
+# Resep run Step 11 yang dijalankan sebelum history mencatat "recipe".
+LEGACY_RECIPE = {
+    "pretrained": True, "augment": True, "loss_weight_mode": "sqrt",
+    "optimizer": "adamw", "scheduler": "cosine", "dropout_p": 0.4,
+    "batch_size": 64, "lr": 1e-3, "weight_decay": 1e-4,
+}
+RECIPE_COMPARE_KEYS = list(LEGACY_RECIPE)   # epochs sudah ada di nama file
+
+
+def recipe_of_history(hist_path):
+    """Resep yang tercatat di file history; LEGACY_RECIPE bila tidak tercatat."""
+    import json
+    if os.path.exists(hist_path):
+        with open(hist_path) as f:
+            rec = json.load(f).get("recipe")
+        if rec:
+            return rec
+    return dict(LEGACY_RECIPE)
+
+
+def recipe_diff(stored, expected):
+    """Kunci resep yang berbeda: {kunci: (tersimpan, diharapkan)}."""
+    diffs = {}
+    for k in RECIPE_COMPARE_KEYS:
+        a, b = stored.get(k), expected.get(k)
+        if isinstance(a, float) or isinstance(b, float):
+            same = a is not None and b is not None and abs(float(a) - float(b)) <= 1e-12
+        else:
+            same = a == b
+        if not same:
+            diffs[k] = (a, b)
+    return diffs
+
+
+def reusable(ckpt_path, hist_path, expected_recipe, log_fn=None, retire=True):
+    """
+    True bila checkpoint ada DAN resepnya sama dengan expected_recipe.
+    Bila resep berbeda, checkpoint (dan history-nya) diganti nama menjadi
+    *.stale.* agar tidak terpakai diam-diam, lalu return False (perlu dilatih ulang).
+    """
+    log_fn = log_fn or _noop
+    if not os.path.exists(ckpt_path):
+        return False
+    diffs = recipe_diff(recipe_of_history(hist_path), expected_recipe)
+    if not diffs:
+        return True
+    log_fn(f"Checkpoint {os.path.basename(ckpt_path)} berasal dari resep berbeda: "
+           + ", ".join(f"{k} {a} -> {b}" for k, (a, b) in diffs.items()))
+    if retire:
+        os.replace(ckpt_path, ckpt_path[:-4] + ".stale.pth")
+        if os.path.exists(hist_path):
+            os.replace(hist_path, hist_path[:-5] + ".stale.json")
+        log_fn("  -> ditandai .stale, run dilatih ulang dengan resep saat ini.")
+    return False

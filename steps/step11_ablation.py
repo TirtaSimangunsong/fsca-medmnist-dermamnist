@@ -16,6 +16,8 @@ Masalah poin 1: kontribusi FSCA dengan resep training yang sama.
 
 Perbaikan dari versi sebelumnya
 --------------------------------
+0. Checkpoint lama hanya dipakai ulang bila resepnya sama dengan config saat
+   ini (common.reusable); bila berbeda, ditandai .stale dan dilatih ulang.
 1. Run yang terputus TIDAK lagi dianggap selesai. Training menulis ke file
    sementara (*.partial.pth) dan baru di-rename setelah run tuntas.
 2. Nama checkpoint memuat jumlah epoch dan metrik seleksi, sehingga
@@ -185,7 +187,8 @@ def _plot(summary, path, title="Ablasi Modul Atensi", labels=None):
 
 def run(log_fn, attentions=None, seeds=None, epochs=None):
     sys.path.insert(0, os.path.dirname(__file__))
-    from step5_training import train_one_run
+    from step5_training import train_one_run, resolve_recipe
+    import common
 
     for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2")]:
         if not os.path.exists(path):
@@ -228,7 +231,8 @@ def run(log_fn, attentions=None, seeds=None, epochs=None):
         log_fn("-" * 78)
 
         best_epoch = None
-        if os.path.exists(ckpt):
+        hp = {**TRAIN_HP, "epochs": epochs, "seed": seed}
+        if common.reusable(ckpt, hist_p, resolve_recipe(hp), log_fn):
             log_fn(f"Run sudah selesai sebelumnya, training dilewati: {os.path.basename(ckpt)}")
             if os.path.exists(hist_p):
                 with open(hist_p) as f:
@@ -238,7 +242,6 @@ def run(log_fn, attentions=None, seeds=None, epochs=None):
                 log_fn("Ditemukan run terputus (.partial) - diulang dari awal.")
                 os.remove(partial)
             t_run = time.time()
-            hp = {**TRAIN_HP, "epochs": epochs, "seed": seed}
             result = train_one_run(hp, log_fn, ckpt_path=partial, attention=attn,
                                    seed=seed, tag=f"{attn}/s{seed}")
             os.replace(partial, ckpt)          # baru dianggap selesai di sini

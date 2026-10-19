@@ -55,6 +55,26 @@ CURVE_PATH    = PATHS["training_curve_chart"]
 DEFAULT_CONFIG = TRAIN_HP
 
 
+def resolve_recipe(hp):
+    """
+    Resep efektif sebuah run: default resep utama, ditimpa oleh kunci di `hp`.
+    Dipakai train_one_run() dan oleh Step 11/12/13 untuk memastikan checkpoint
+    lama yang dipakai ulang memang berasal dari resep yang sama.
+    """
+    return {
+        "pretrained":       hp.get("pretrained", MODEL_CONFIG["pretrained"]),
+        "augment":          hp.get("augment", TRAIN_HP.get("augment", True)),
+        "loss_weight_mode": hp.get("loss_weight_mode", IMBALANCE["loss_weight_mode"]),
+        "optimizer":        hp.get("optimizer", TRAIN_HP.get("optimizer", "adamw")),
+        "scheduler":        hp.get("scheduler", TRAIN_HP.get("scheduler", "cosine")),
+        "dropout_p":        hp.get("dropout_p", MODEL_CONFIG["dropout_p"]),
+        "batch_size":       hp["batch_size"],
+        "lr":               hp["lr"],
+        "weight_decay":     hp["weight_decay"],
+        "epochs":           hp["epochs"],
+    }
+
+
 def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, tag=None):
     """
     Satu run training Fase 1.
@@ -82,18 +102,7 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
     select_metric = hp.get("select_metric", "auc")
     sel_key, higher = common.selection_key(select_metric)
 
-    # Resep (default = resep utama; bisa ditimpa per run oleh Step 12)
-    recipe = {
-        "pretrained":       hp.get("pretrained", MODEL_CONFIG["pretrained"]),
-        "augment":          hp.get("augment", TRAIN_HP.get("augment", True)),
-        "loss_weight_mode": hp.get("loss_weight_mode", IMBALANCE["loss_weight_mode"]),
-        "optimizer":        hp.get("optimizer", TRAIN_HP.get("optimizer", "adamw")),
-        "scheduler":        hp.get("scheduler", TRAIN_HP.get("scheduler", "cosine")),
-        "dropout_p":        hp.get("dropout_p", MODEL_CONFIG["dropout_p"]),
-        "batch_size":       hp["batch_size"],
-        "lr":               hp["lr"],
-        "weight_decay":     hp["weight_decay"],
-    }
+    recipe = resolve_recipe(hp)
 
     with open(META_PATH)   as f: meta   = json.load(f)
     with open(CONFIG_PATH) as f: config = json.load(f)
