@@ -134,11 +134,11 @@ AUGMENTATION = {
 # HYPERPARAMETER — STEP 5 (TRAINING AWAL / FASE 1)
 # =========================================================
 TRAIN_HP = {
-    "epochs":        100,
+    "epochs":        40,
     "batch_size":    64,
     "lr":            1e-3,
     "weight_decay":  1e-4,
-    "patience":      100,    # = epochs -> early stopping praktis nonaktif
+    "patience":      40,    # = epochs -> early stopping praktis nonaktif
     "seed":          42,     # seed run utama (Step 11 memakai EXPERIMENT["seeds"])
     # Metrik validasi untuk memilih checkpoint terbaik (dan early stopping):
     #   "auc"     -> val AUC macro, makin besar makin baik (protokol resmi MedMNIST)

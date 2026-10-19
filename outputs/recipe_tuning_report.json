@@ -1,0 +1,231 @@
+{
+  "summary": {
+    "e100_wd1e-4": {
+      "label": "100 epoch, weight decay 0,0001 (saat ini)",
+      "override": {
+        "epochs": 100,
+        "weight_decay": 0.0001
+      },
+      "epochs": 100,
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "val_auc_mean": 0.9312999999999999,
+      "val_auc_std": 0.0015000000000000013,
+      "val_auc_runs": [
+        0.9298,
+        0.9328,
+        0.9313
+      ],
+      "val_loss_mean": 0.9454666666666668,
+      "val_bal_acc_mean": 58.370000000000005,
+      "best_epochs": [
+        21,
+        28,
+        25
+      ]
+    },
+    "e40_wd1e-4": {
+      "label": "40 epoch, weight decay 0,0001",
+      "override": {
+        "epochs": 40,
+        "weight_decay": 0.0001
+      },
+      "epochs": 40,
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "val_auc_mean": 0.9339666666666666,
+      "val_auc_std": 0.000929157324317778,
+      "val_auc_runs": [
+        0.9332,
+        0.935,
+        0.9337
+      ],
+      "val_loss_mean": 0.9209,
+      "val_bal_acc_mean": 56.94333333333333,
+      "best_epochs": [
+        10,
+        17,
+        16
+      ]
+    },
+    "e40_wd5e-2": {
+      "label": "40 epoch, weight decay 0,05",
+      "override": {
+        "epochs": 40,
+        "weight_decay": 0.05
+      },
+      "epochs": 40,
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "val_auc_mean": 0.9337666666666667,
+      "val_auc_std": 0.0020599352740640507,
+      "val_auc_runs": [
+        0.9316,
+        0.934,
+        0.9357
+      ],
+      "val_loss_mean": 0.8983666666666666,
+      "val_bal_acc_mean": 60.85999999999999,
+      "best_epochs": [
+        21,
+        17,
+        16
+      ]
+    }
+  },
+  "raw": {
+    "e100_wd1e-4": [
+      {
+        "seed": 0,
+        "source": "step11",
+        "best_epoch": 21,
+        "val_auc": 0.9298,
+        "val_loss": 0.9403,
+        "val_acc": 75.07,
+        "val_bal_acc": 58.37,
+        "epochs_run": 100
+      },
+      {
+        "seed": 1,
+        "source": "step11",
+        "best_epoch": 28,
+        "val_auc": 0.9328,
+        "val_loss": 0.9749,
+        "val_acc": 70.19,
+        "val_bal_acc": 59.0,
+        "epochs_run": 100
+      },
+      {
+        "seed": 2,
+        "source": "step11",
+        "best_epoch": 25,
+        "val_auc": 0.9313,
+        "val_loss": 0.9212,
+        "val_acc": 75.37,
+        "val_bal_acc": 57.74,
+        "epochs_run": 100
+      }
+    ],
+    "e40_wd1e-4": [
+      {
+        "seed": 0,
+        "source": "recipe_tuning",
+        "best_epoch": 10,
+        "val_auc": 0.9332,
+        "val_loss": 0.9392,
+        "val_acc": 74.68,
+        "val_bal_acc": 54.78,
+        "epochs_run": 40
+      },
+      {
+        "seed": 1,
+        "source": "recipe_tuning",
+        "best_epoch": 17,
+        "val_auc": 0.935,
+        "val_loss": 0.8843,
+        "val_acc": 71.39,
+        "val_bal_acc": 59.16,
+        "epochs_run": 40
+      },
+      {
+        "seed": 2,
+        "source": "recipe_tuning",
+        "best_epoch": 16,
+        "val_auc": 0.9337,
+        "val_loss": 0.9392,
+        "val_acc": 76.67,
+        "val_bal_acc": 56.89,
+        "epochs_run": 40
+      }
+    ],
+    "e40_wd5e-2": [
+      {
+        "seed": 0,
+        "source": "recipe_tuning",
+        "best_epoch": 21,
+        "val_auc": 0.9316,
+        "val_loss": 0.8941,
+        "val_acc": 75.17,
+        "val_bal_acc": 62.06,
+        "epochs_run": 40
+      },
+      {
+        "seed": 1,
+        "source": "recipe_tuning",
+        "best_epoch": 17,
+        "val_auc": 0.934,
+        "val_loss": 0.9004,
+        "val_acc": 75.07,
+        "val_bal_acc": 60.58,
+        "epochs_run": 40
+      },
+      {
+        "seed": 2,
+        "source": "recipe_tuning",
+        "best_epoch": 16,
+        "val_auc": 0.9357,
+        "val_loss": 0.9006,
+        "val_acc": 77.57,
+        "val_bal_acc": 59.94,
+        "epochs_run": 40
+      }
+    ]
+  },
+  "comparisons_vs_current": {
+    "e40_wd1e-4": {
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "diffs": [
+        0.0034000000000000696,
+        0.0022000000000000908,
+        0.0023999999999999577
+      ],
+      "mean_diff": 0.002666666666666706,
+      "wins": 3
+    },
+    "e40_wd5e-2": {
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "diffs": [
+        0.0018000000000000238,
+        0.0012000000000000899,
+        0.0043999999999999595
+      ],
+      "mean_diff": 0.002466666666666691,
+      "wins": 3
+    }
+  },
+  "winner": "e40_wd1e-4",
+  "winner_override": {
+    "epochs": 40,
+    "weight_decay": 0.0001
+  },
+  "tied": [
+    "e40_wd1e-4",
+    "e40_wd5e-2"
+  ],
+  "tie_tolerance": 0.001,
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "select_metric": "auc",
+  "note": "Pemilihan hanya berdasarkan validasi; data test tidak dievaluasi.",
+  "chart_path": "/Users/tirtasimangunsong/Documents/GitHub/thesis-fsca-medmnist/outputs/recipe_tuning_val_auc.png"
+}
