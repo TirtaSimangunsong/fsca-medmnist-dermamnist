@@ -18,7 +18,7 @@ import json
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import PATHS, DATASET
+from config import PATHS, DATASET, MODEL_CONFIG
 
 OUTPUT_DIR   = PATHS["output_dir"]
 META_PATH    = PATHS["dataset_meta"]
@@ -84,14 +84,17 @@ def run(log_fn):
     img_size = DATASET["image_size"]
 
     sys.path.insert(0, os.path.dirname(__file__))
-    from step4_model import build_model
+    from step4_model import build_model, model_label
+    # Arsitektur mengikuti model yang dievaluasi di Step 7 (bukan config saat ini).
     # pretrained=False: hanya untuk menghitung parameter, tidak perlu unduh bobot ImageNet
-    model = build_model(n_classes=meta["n_classes"], pretrained=False)
+    attn_name = report.get("attention", MODEL_CONFIG["attention"])
+    model = build_model(n_classes=meta["n_classes"], pretrained=False, attention=attn_name)
     total_params = sum(p.numel() for p in model.parameters())
-    attn = report.get("attention", model.attention_name).upper()
+    attn  = attn_name.upper()
+    label = model_label(attn_name)
 
     log_fn("=" * 60)
-    log_fn(f"       RINGKASAN PERFORMA MODEL ResNet-18 + {attn}")
+    log_fn(f"       RINGKASAN PERFORMA MODEL {label}")
     log_fn("=" * 60)
     log_fn(f"  Dataset        : DermaMNIST ({img_size}×{img_size} piksel)")
     log_fn(f"  Jumlah Kelas   : {meta['n_classes']}")
@@ -122,7 +125,7 @@ def run(log_fn):
         ("CNN + ViT Hybrid [Arshed 2023]",            "high",  "—",     "—"),
         ("Transfer + Deep Attention [Alotaibi 2025]", "high",  "—",     "—"),
         ("EDA-ResNet50 [Hosny 2025]",                 "high",  "—",     "—"),
-        (f"ResNet-18 + {attn} (Ours)",                f"{img_size}×{img_size}",
+        (f"{label} (Ours)",                f"{img_size}×{img_size}",
          f"{acc:.2f}%", f"{f1_w:.4f}"),
     ]
     log_fn(f"  {'Model':<48} {'Res':>6} {'Acc':>8} {'F1-W':>8}")
@@ -144,7 +147,7 @@ def run(log_fn):
     colors_m = ["#4fc3f7", "#ba68c8", "#81c784", "#ffb74d", "#f06292"]
     bars = ax1.barh(metrics_names, metrics_vals, color=colors_m, edgecolor="#333", height=0.5)
     ax1.set_xlim(0, 105)
-    ax1.set_title(f"Metrics Utama ResNet-18 + {attn} (x100 untuk F1/AUC)",
+    ax1.set_title(f"Metrics Utama {label} (x100 untuk F1/AUC)",
                   color="white", fontweight="bold")
     ax1.tick_params(colors="white")
     for spine in ax1.spines.values(): spine.set_color("#555")
@@ -160,7 +163,7 @@ def run(log_fn):
         f"Model Info\n"
         f"{'─'*22}\n"
         f"Arch   : ResNet-18\n"
-        f"Modul  : {attn} ×4\n"
+        f"Modul  : {'-' if attn_name == 'none' else attn + ' ×4'}\n"
         f"Params : {total_params/1e6:.2f}M\n"
         f"Size   : {model_mb:.1f} MB\n"
         f"Input  : {img_size}×{img_size} px\n"
@@ -207,7 +210,7 @@ def run(log_fn):
     for spine in ax4.spines.values(): spine.set_color("#555")
 
     fig.suptitle("Summary Report — Skripsi Tirta (01082230021)\n"
-                 "Fused Spatial-Channel Attention untuk Klasifikasi Kanker Kulit",
+                 f"{label} untuk Klasifikasi Kanker Kulit (DermaMNIST {img_size}×{img_size})",
                  color="white", fontsize=12, fontweight="bold")
     plt.savefig(SUMMARY_PNG, dpi=130, bbox_inches="tight", facecolor="#1a1a1a")
     plt.close()

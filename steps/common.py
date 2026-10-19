@@ -14,6 +14,8 @@ Fungsi yang dipakai lebih dari satu step:
 - validate()                  : loss + acc + balanced acc + AUC di val set (per epoch)
 - selection_key()/is_better() : aturan memilih checkpoint terbaik (TRAIN_HP["select_metric"])
 - plot_history()              : kurva loss / accuracy / val AUC
+- make_optimizer()/make_scheduler(): optimizer & scheduler sesuai resep (AdamW+cosine / Adam+MultiStep)
+- per_class_recall()          : recall tiap kelas (untuk analisis kelas minoritas)
 
 Dipakai oleh: step5_training (train_one_run), step6_finetune, step7_evaluation,
 step11_ablation.
@@ -388,3 +390,42 @@ def plot_history(history, save_path, title_prefix="Training"):
     plt.tight_layout()
     plt.savefig(save_path, dpi=120, bbox_inches="tight", facecolor="#1a1a1a")
     plt.close()
+
+
+# =========================================================
+# RESEP TRAINING: OPTIMIZER, SCHEDULER, METRIK PER KELAS
+# =========================================================
+def make_optimizer(params, name, lr, weight_decay):
+    """
+    "adamw" -> AdamW (weight decay terpisah dari gradien; resep skripsi)
+    "adam"  -> Adam  (resep resmi MedMNIST memakai Adam tanpa weight decay)
+    """
+    import torch
+    if name == "adamw":
+        return torch.optim.AdamW(params, lr=lr, weight_decay=weight_decay)
+    if name == "adam":
+        return torch.optim.Adam(params, lr=lr, weight_decay=weight_decay)
+    raise ValueError(f"optimizer '{name}' tidak dikenal. Pilihan: adamw, adam")
+
+
+def make_scheduler(optimizer, name, epochs, milestones=(0.5, 0.75), gamma=0.1):
+    """
+    "cosine"    -> CosineAnnealingLR, LR turun halus sampai ~0 di epoch terakhir
+    "multistep" -> MultiStepLR, LR x gamma pada fraksi epoch di `milestones`
+                   (resmi MedMNIST: epoch 50 & 75 dari 100, gamma 0.1)
+    """
+    from torch.optim.lr_scheduler import CosineAnnealingLR, MultiStepLR
+    if name == "cosine":
+        return CosineAnnealingLR(optimizer, T_max=epochs)
+    if name == "multistep":
+        ms = [int(round(f * epochs)) for f in milestones]
+        return MultiStepLR(optimizer, milestones=ms, gamma=gamma)
+    raise ValueError(f"scheduler '{name}' tidak dikenal. Pilihan: cosine, multistep")
+
+
+def per_class_recall(y_true, y_pred, n_classes):
+    """Recall tiap kelas (urutan indeks kelas 0..n-1), dalam persen."""
+    from sklearn.metrics import recall_score
+    r = recall_score(y_true, y_pred, labels=list(range(n_classes)),
+                     average=None, zero_division=0)
+    return [float(100.0 * v) for v in r]

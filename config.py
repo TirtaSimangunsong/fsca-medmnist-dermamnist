@@ -76,6 +76,11 @@ PATHS = {
     "ablation_report":    os.path.join(OUTPUT_DIR, "ablation_report.json"),
     "ablation_chart":     os.path.join(OUTPUT_DIR, "ablation_comparison.png"),
 
+    # Ablasi resep training (Step 12)
+    "recipe_ablation_dir":    os.path.join(OUTPUT_DIR, "recipe_ablation"),
+    "recipe_ablation_report": os.path.join(OUTPUT_DIR, "recipe_ablation_report.json"),
+    "recipe_ablation_chart":  os.path.join(OUTPUT_DIR, "recipe_ablation_comparison.png"),
+
     # Chart / visualisasi (PNG)
     "split_distribution_chart": os.path.join(OUTPUT_DIR, "split_distribution.png"),
     "training_curve_chart":     os.path.join(OUTPUT_DIR, "training_curve.png"),
@@ -136,6 +141,14 @@ TRAIN_HP = {
     #   "bal_acc" -> val balanced accuracy
     #   "acc"     -> val accuracy (perilaku lama; berisik & buta overconfidence)
     "select_metric": "auc",
+
+    # Komponen resep (bisa dimatikan satu per satu di Step 12)
+    "augment":       True,       # augmentasi train (AUGMENTATION di atas)
+    "optimizer":     "adamw",    # "adamw" | "adam"
+    "scheduler":     "cosine",   # "cosine" | "multistep"
+    # Hanya untuk scheduler "multistep" (resmi MedMNIST: epoch 50 & 75 dari 100, x0.1)
+    "multistep_milestones": [0.5, 0.75],
+    "multistep_gamma":      0.1,
 }
 
 
@@ -167,7 +180,9 @@ MODEL_CONFIG = {
     "pretrained":       True,
     # Modul atensi yang dipasang setelah layer1..layer4.
     # Pilihan: "none" | "se" | "eca" | "cbam" | "fsca"
-    "attention":        "fsca",
+    # Model utama: "none" (ResNet-18 tanpa modul atensi). Hasil ablasi Step 11
+    # menunjukkan FSCA tidak memberi peningkatan signifikan dengan resep ini.
+    "attention":        "none",
     "dropout_p":        0.4,
     "fsca_reduction":   16,      # reduction ratio untuk ChannelAttention MLP (juga SE/CBAM)
     "fsca_spatial_kernel": 7,    # kernel size untuk SpatialAttention conv (juga CBAM)
@@ -224,6 +239,38 @@ EXPERIMENT = {
 
 
 # =========================================================
+# ABLASI RESEP TRAINING (Step 12)
+# =========================================================
+# ResNet-18 tanpa modul atensi. Setiap varian = resep utama dengan SATU
+# komponen dimatikan (leave-one-out), sehingga selisihnya terhadap "full"
+# adalah kontribusi komponen tersebut. "official" mematikan semuanya untuk
+# mereproduksi resep resmi MedMNIST v2 di pipeline yang sama.
+RECIPE_ABLATION = {
+    "attention": "none",
+    "seeds":     [0, 1, 2, 3, 4],       # sama dengan Step 11 -> hasil "full" dipakai ulang
+    "epochs":    TRAIN_HP["epochs"],
+    "variants": {
+        "full":        {},
+        "no_pretrain": {"pretrained": False},
+        "no_aug":      {"augment": False},
+        "no_wce":      {"loss_weight_mode": "none"},
+        "adam_step":   {"optimizer": "adam", "scheduler": "multistep", "weight_decay": 0.0},
+        "official":    {"pretrained": False, "augment": False, "loss_weight_mode": "none",
+                        "optimizer": "adam", "scheduler": "multistep", "weight_decay": 0.0,
+                        "batch_size": 128, "dropout_p": 0.0},
+    },
+    "labels": {
+        "full":        "Resep lengkap",
+        "no_pretrain": "- pretrained ImageNet",
+        "no_aug":      "- augmentasi",
+        "no_wce":      "- Weighted CE (CE biasa)",
+        "adam_step":   "Adam + MultiStep (bukan AdamW + cosine)",
+        "official":    "Resep resmi MedMNIST",
+    },
+}
+
+
+# =========================================================
 # DEVICE
 # =========================================================
 DEVICE_CONFIG = {
@@ -242,6 +289,7 @@ def ensure_dirs():
     os.makedirs(PATHS["gradcam_dir"], exist_ok=True)
     os.makedirs(PATHS["png_dir"], exist_ok=True)
     os.makedirs(PATHS["ablation_dir"], exist_ok=True)
+    os.makedirs(PATHS["recipe_ablation_dir"], exist_ok=True)
 
 
 def get_png_subdir(step_name):

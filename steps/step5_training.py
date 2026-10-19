@@ -17,6 +17,16 @@ ImageNet, dengan:
   patience = epochs berarti praktis nonaktif)
 - Setiap epoch mencatat: loss, acc, balanced acc, dan AUC validasi
 
+Resep bisa ditimpa per run lewat `hp` (dipakai Step 12, ablasi resep):
+  pretrained       (default MODEL_CONFIG["pretrained"])
+  augment          (default TRAIN_HP["augment"])
+  loss_weight_mode (default IMBALANCE["loss_weight_mode"]; "none" = CE biasa)
+  optimizer        (default TRAIN_HP["optimizer"]: "adamw" | "adam")
+  scheduler        (default TRAIN_HP["scheduler"]: "cosine" | "multistep")
+  dropout_p        (default MODEL_CONFIG["dropout_p"])
+  batch_size, weight_decay, lr, epochs
+Tanpa override, perilakunya identik dengan resep utama skripsi.
+
 Fungsi train_one_run() juga dipakai Step 11 (ablasi multi-seed).
 
 Output: outputs/checkpoint_best.pth, outputs/training_curve.png,
@@ -50,7 +60,8 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
     Satu run training Fase 1.
 
     hp        : dict berisi epochs, batch_size, lr, weight_decay, patience,
-                select_metric (opsional, default "auc"), seed (opsional)
+                select_metric (opsional, default "auc"), seed (opsional),
+                dan override resep opsional (lihat docstring modul)
     ckpt_path : lokasi simpan checkpoint terbaik
     attention : "none" | "se" | "eca" | "cbam" | "fsca" | None (=MODEL_CONFIG)
     seed      : jika diberikan, mengunci inisialisasi dan urutan data
@@ -61,17 +72,28 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
     """
     import torch
     import torch.nn as nn
-    from torch.optim import AdamW
-    from torch.optim.lr_scheduler import CosineAnnealingLR
 
     sys.path.insert(0, os.path.dirname(__file__))
-    from step4_model import build_model
+    from step4_model import build_model, model_label
     import common
 
     prefix = f"[{tag}] " if tag else ""
     seed = seed if seed is not None else hp.get("seed")
     select_metric = hp.get("select_metric", "auc")
     sel_key, higher = common.selection_key(select_metric)
+
+    # Resep (default = resep utama; bisa ditimpa per run oleh Step 12)
+    recipe = {
+        "pretrained":       hp.get("pretrained", MODEL_CONFIG["pretrained"]),
+        "augment":          hp.get("augment", TRAIN_HP.get("augment", True)),
+        "loss_weight_mode": hp.get("loss_weight_mode", IMBALANCE["loss_weight_mode"]),
+        "optimizer":        hp.get("optimizer", TRAIN_HP.get("optimizer", "adamw")),
+        "scheduler":        hp.get("scheduler", TRAIN_HP.get("scheduler", "cosine")),
+        "dropout_p":        hp.get("dropout_p", MODEL_CONFIG["dropout_p"]),
+        "batch_size":       hp["batch_size"],
+        "lr":               hp["lr"],
+        "weight_decay":     hp["weight_decay"],
+    }
 
     with open(META_PATH)   as f: meta   = json.load(f)
     with open(CONFIG_PATH) as f: config = json.load(f)
@@ -87,25 +109,30 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
     log_fn(f"{prefix}Memuat DataLoader...")
     loaders, dinfo = common.build_dataloaders(
         mean=config["mean"], std=config["std"],
-        batch_size=hp["batch_size"], n_classes=n_classes,
-        splits=("train", "val"), train_augment=True, seed=seed, log_fn=log_fn,
+        batch_size=recipe["batch_size"], n_classes=n_classes,
+        splits=("train", "val"), train_augment=recipe["augment"], seed=seed, log_fn=log_fn,
     )
     train_loader, val_loader = loaders["train"], loaders["val"]
 
-    # Model (bobot awal ImageNet sesuai MODEL_CONFIG["pretrained"])
+    # Model
     model = build_model(n_classes=n_classes,
-                        pretrained=MODEL_CONFIG["pretrained"],
-                        attention=attention).to(device)
-    log_fn(f"{prefix}Model: ResNet-18 + {model.attention_name.upper()} "
-           f"(pretrained={MODEL_CONFIG['pretrained']})")
+                        pretrained=recipe["pretrained"],
+                        attention=attention,
+                        dropout_p=recipe["dropout_p"]).to(device)
+    log_fn(f"{prefix}Model: {model_label(model.attention_name)} "
+           f"(pretrained={recipe['pretrained']}, dropout={recipe['dropout_p']})")
+    log_fn(f"{prefix}Augmentasi: {'aktif' if recipe['augment'] else 'nonaktif'}")
 
-    # Loss: Weighted Cross-Entropy (tanpa WeightedRandomSampler)
-    mode = IMBALANCE["loss_weight_mode"]
+    # Loss: Weighted Cross-Entropy (tanpa WeightedRandomSampler); "none" = CE biasa
+    mode = recipe["loss_weight_mode"]
     weights = common.compute_loss_class_weights(dinfo["class_counts"], mode)
     class_weights_tensor = torch.tensor(weights, dtype=torch.float32).to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
-    log_fn(f"{prefix}Loss: Weighted CE (mode={mode}, rasio maks/min "
-           f"{weights.max() / weights.min():.1f}x)")
+    if mode == "none":
+        log_fn(f"{prefix}Loss: Cross-Entropy biasa (tanpa bobot kelas)")
+    else:
+        log_fn(f"{prefix}Loss: Weighted CE (mode={mode}, rasio maks/min "
+               f"{weights.max() / weights.min():.1f}x)")
 
     # Seluruh model dilatih. Skema "Phase 1 head-only" tidak dipakai karena
     # stem sudah diganti (conv 3x3 stride 1), sehingga membekukan backbone
@@ -115,8 +142,16 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
     log_fn(f"{prefix}Checkpoint dipilih berdasarkan: val {select_metric} "
            f"({'maksimum' if higher else 'minimum'})")
 
-    optimizer = AdamW(model.parameters(), lr=hp["lr"], weight_decay=hp["weight_decay"])
-    scheduler = CosineAnnealingLR(optimizer, T_max=hp["epochs"])
+    optimizer = common.make_optimizer(model.parameters(), recipe["optimizer"],
+                                      recipe["lr"], recipe["weight_decay"])
+    scheduler = common.make_scheduler(
+        optimizer, recipe["scheduler"], hp["epochs"],
+        milestones=TRAIN_HP.get("multistep_milestones", (0.5, 0.75)),
+        gamma=TRAIN_HP.get("multistep_gamma", 0.1),
+    )
+    log_fn(f"{prefix}Optimizer: {recipe['optimizer']} (lr={recipe['lr']}, "
+           f"weight_decay={recipe['weight_decay']}) | scheduler: {recipe['scheduler']} "
+           f"| batch: {recipe['batch_size']}")
 
     history = {"train_loss": [], "val_loss": [], "train_acc": [], "val_acc": [],
                "val_bal_acc": [], "val_auc": [], "lr": []}
@@ -188,6 +223,7 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
 
     history["best_epoch"]    = best_epoch
     history["select_metric"] = select_metric
+    history["recipe"]        = recipe
 
     log_fn(f"\n{prefix}Checkpoint terpilih: epoch {best_epoch} | "
            f"val AUC {best_vm['auc_macro']:.4f} | val acc {best_vm['acc']:.2f}% | "

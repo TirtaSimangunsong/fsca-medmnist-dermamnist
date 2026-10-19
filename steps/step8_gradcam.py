@@ -48,6 +48,10 @@ RINGKASAN PERBAIKAN dari versi sebelumnya
 8. Device dipilih lewat common.resolve_device() (DEVICE_CONFIG "auto":
    MPS -> CUDA -> CPU), sama seperti Step 5, 6, 7, 10, dan 11.
 
+9. Model tanpa modul atensi (MODEL_CONFIG["attention"] = "none") didukung:
+   Grad-CAM dipasang di layer3 & layer4, dan figure pembanding
+   layer4 vs fsca4 dilewati (keduanya identik bila tidak ada modul atensi).
+
 Output: outputs/gradcam_grid.png            (grid utama, multi-layer)
         outputs/gradcam_fsca_effect.png     (layer4 vs fsca4)
         outputs/gradcam/class_{i}_{name}.png
@@ -78,7 +82,15 @@ DEAD_CAM_EPS = 1e-6
 
 # Lapisan yang divisualisasikan pada grid utama, berurutan dari resolusi
 # tinggi ke rendah. Nama harus cocok dengan atribut pada ResNet18_FSCA.
-GRID_LAYERS = ["fsca3", "fsca4"]
+# Dengan modul atensi: keluaran modul atensi (fsca3/fsca4).
+# Tanpa modul atensi : keluaran blok residual (layer3/layer4).
+GRID_LAYERS_ATTENTION    = ["fsca3", "fsca4"]
+GRID_LAYERS_NO_ATTENTION = ["layer3", "layer4"]
+
+
+def grid_layers_for(model):
+    return (GRID_LAYERS_NO_ATTENTION if model.attention_name == "none"
+            else GRID_LAYERS_ATTENTION)
 
 
 # =========================================================
@@ -260,7 +272,7 @@ def run(log_fn):
     import matplotlib.pyplot as plt
 
     sys.path.insert(0, os.path.dirname(__file__))
-    from step4_model import build_model
+    from step4_model import build_model, model_label
     import common
 
     for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"),
@@ -284,7 +296,8 @@ def run(log_fn):
     model = build_model(n_classes=n_classes, pretrained=False).to(device)
     model.load_state_dict(torch.load(FINAL_MODEL, map_location=device))
     model.eval()
-    log_fn(f"Model: ResNet-18 + {model.attention_name.upper()}")
+    label = model_label(model.attention_name)
+    log_fn(f"Model: {label}")
 
     test_transform = transforms.Compose([
         transforms.ToTensor(),
@@ -301,7 +314,7 @@ def run(log_fn):
 
     # Siapkan objek GradCAM untuk tiap lapisan yang diminta
     cams = {}
-    for layer_name in GRID_LAYERS:
+    for layer_name in grid_layers_for(model):
         if not hasattr(model, layer_name):
             log_fn(f"PERINGATAN: model tidak punya atribut '{layer_name}', dilewati.")
             continue
@@ -317,7 +330,7 @@ def run(log_fn):
     fig, axes = plt.subplots(n_classes, n_cols,
                              figsize=(3.0 * n_cols, n_classes * 2.9))
     fig.patch.set_facecolor("#1a1a1a")
-    fig.suptitle("Grad-CAM — ResNet-18 + FSCA (DermaMNIST 28x28)\n"
+    fig.suptitle(f"Grad-CAM — {label} (DermaMNIST {img_size}x{img_size})\n"
                  "Sampel terpilih: prediksi benar dengan confidence tertinggi",
                  color="white", fontsize=13, fontweight="bold", y=1.005)
 
@@ -414,15 +427,22 @@ def run(log_fn):
     for gc in cams.values():
         gc.remove()
 
-    # ---- Figure pembanding: sebelum vs sesudah FSCA ----
-    _render_fsca_effect(model, test_ds, selected, class_map, n_classes,
-                        mean, std, img_size, device, colormap, log_fn)
+    # ---- Figure pembanding: sebelum vs sesudah modul atensi ----
+    effect_path = None
+    if model.attention_name == "none":
+        if os.path.exists(EFFECT_PATH):
+            os.remove(EFFECT_PATH)   # buang figure lama agar tidak tertukar dengan run ini
+        log_fn("Model tanpa modul atensi: figure pembanding layer4 vs fsca4 dilewati.")
+    else:
+        _render_fsca_effect(model, test_ds, selected, class_map, n_classes,
+                            mean, std, img_size, device, colormap, log_fn)
+        effect_path = EFFECT_PATH
 
     with open(DIAGNOSTICS_PATH, "w") as f:
         json.dump(diagnostics, f, indent=2)
     log_fn(f"Diagnostik tersimpan -> {DIAGNOSTICS_PATH}")
 
-    return {"chart_path": GRID_PATH, "effect_path": EFFECT_PATH,
+    return {"chart_path": GRID_PATH, "effect_path": effect_path,
             "gradcam_dir": GRADCAM_DIR, "diagnostics": diagnostics}
 
 

@@ -141,22 +141,27 @@ def _paired_tests(raw, reference, log_fn):
     return results
 
 
-def _plot(summary, path):
+def _plot(summary, path, title="Ablasi Modul Atensi", labels=None):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     names = list(summary.keys())
-    fig, axes = plt.subplots(1, len(METRICS), figsize=(5 * len(METRICS), 4.5))
+    ticks = [(labels or {}).get(n, n) for n in names]
+    rotate = max(len(t) for t in ticks) > 8
+    fig, axes = plt.subplots(1, len(METRICS), figsize=(5 * len(METRICS), 5.5 if rotate else 4.5))
     fig.patch.set_facecolor("#1a1a1a")
-    colors = ["#607D8B", "#4FC3F7", "#81C784", "#FFD54F", "#FF8A65"]
+    colors = ["#607D8B", "#4FC3F7", "#81C784", "#FFD54F", "#FF8A65", "#BA68C8"]
 
     for ax, metric in zip(np.atleast_1d(axes), METRICS):
         ax.set_facecolor("#1a1a1a")
         means = [summary[n][metric]["mean"] for n in names]
         stds = [summary[n][metric]["std"] for n in names]
-        ax.bar(names, means, yerr=stds, capsize=5,
+        ax.bar(range(len(names)), means, yerr=stds, capsize=5,
                color=[colors[i % len(colors)] for i in range(len(names))])
+        ax.set_xticks(range(len(names)))
+        ax.set_xticklabels(ticks, rotation=35 if rotate else 0,
+                           ha="right" if rotate else "center", fontsize=8 if rotate else 10)
         # titik per seed agar sebaran terlihat
         for i, n in enumerate(names):
             runs = summary[n][metric]["runs"]
@@ -171,7 +176,7 @@ def _plot(summary, path):
             s.set_color("#555")
         ax.grid(alpha=0.15, axis="y")
 
-    fig.suptitle("Ablasi Modul Atensi - mean +/- std antar seed (titik = tiap seed)",
+    fig.suptitle(f"{title} - mean +/- std antar seed (titik = tiap seed)",
                  color="white", fontsize=13, fontweight="bold")
     plt.tight_layout()
     plt.savefig(path, dpi=120, bbox_inches="tight", facecolor="#1a1a1a")

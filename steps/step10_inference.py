@@ -6,8 +6,9 @@ dan mendapatkan prediksi kelas + confidence score + Grad-CAM overlay.
 
 Konsistensi dengan step lain:
 - Device dipilih lewat common.resolve_device() (DEVICE_CONFIG "auto").
-- Grad-CAM dipasang pada `fsca4` (SESUDAH modul atensi), sama dengan
-  Step 8, sehingga heatmap memuat kontribusi FSCA.
+- Grad-CAM dipasang pada lapisan terakhir yang sama dengan Step 8:
+  `fsca4` (sesudah modul atensi) bila model memakai modul atensi,
+  `layer4` bila model tanpa modul atensi (MODEL_CONFIG["attention"]="none").
 - Prediksi memakai satu forward pass (tanpa TTA / logit adjustment),
   sesuai kondisi pemakaian model pada satu citra.
 
@@ -28,7 +29,8 @@ FINAL_MODEL   = PATHS["final_model"]
 RESULT_PATH   = PATHS["inference_result_chart"]
 
 # Lapisan target Grad-CAM (harus sama dengan hook utama di Step 8)
-GRADCAM_LAYER = "fsca4"
+def _gradcam_layer(model):
+    return "layer4" if model.attention_name == "none" else "fsca4"
 
 
 def predict_image(image_path, log_fn):
@@ -104,7 +106,8 @@ def predict_image(image_path, log_fn):
     for rank, idx in enumerate(top3, 1):
         log_fn(f"  #{rank}  [{idx}] {class_map[str(idx)]:<40} : {probs[idx]*100:.2f}%")
 
-    # Grad-CAM pada fsca4 (sesudah modul atensi), sama dengan Step 8
+    # Grad-CAM pada lapisan terakhir (sama dengan Step 8)
+    GRADCAM_LAYER = _gradcam_layer(model)
     grad_cam = GradCAM(model, target_layer=getattr(model, GRADCAM_LAYER))
     cam, _ = grad_cam.generate(img_tensor, target_class=int(pred))
     grad_cam.remove()

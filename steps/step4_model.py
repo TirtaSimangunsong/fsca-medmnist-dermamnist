@@ -184,8 +184,14 @@ def make_attention(name, channels):
 # =========================================================
 # MODEL UTAMA: ResNet-18 + modul atensi
 # =========================================================
+def model_label(attention_name):
+    """Nama model untuk log/judul: 'ResNet-18' atau 'ResNet-18 + FSCA'."""
+    return "ResNet-18" if attention_name == "none" else f"ResNet-18 + {attention_name.upper()}"
+
+
 class ResNet18_FSCA(nn.Module):
-    def __init__(self, n_classes=7, pretrained=MODEL_CONFIG["pretrained"], attention=None):
+    def __init__(self, n_classes=7, pretrained=MODEL_CONFIG["pretrained"], attention=None,
+                 dropout_p=None):
         super().__init__()
         from torchvision.models import resnet18, ResNet18_Weights
 
@@ -219,7 +225,8 @@ class ResNet18_FSCA(nn.Module):
         self.fsca4 = make_attention(attention, 512)
 
         self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.dropout = nn.Dropout(p=MODEL_CONFIG["dropout_p"])
+        dropout_p = MODEL_CONFIG["dropout_p"] if dropout_p is None else dropout_p
+        self.dropout = nn.Dropout(p=dropout_p)
         self.fc      = nn.Linear(512, n_classes)
 
     def forward(self, x):
@@ -246,12 +253,16 @@ class ResNet18_FSCA(nn.Module):
 # =========================================================
 # ENTRY POINT
 # =========================================================
-def build_model(n_classes=7, pretrained=MODEL_CONFIG["pretrained"], attention=None):
+def build_model(n_classes=7, pretrained=MODEL_CONFIG["pretrained"], attention=None,
+                dropout_p=None):
     """
     Factory function — dipanggil oleh step lain.
-    attention=None -> pakai MODEL_CONFIG["attention"] (default "fsca").
+    attention=None -> pakai MODEL_CONFIG["attention"].
+    dropout_p=None -> pakai MODEL_CONFIG["dropout_p"] (dropout tidak memengaruhi
+                      state_dict, jadi checkpoint tetap bisa dimuat dengan nilai apa pun).
     """
-    return ResNet18_FSCA(n_classes=n_classes, pretrained=pretrained, attention=attention)
+    return ResNet18_FSCA(n_classes=n_classes, pretrained=pretrained, attention=attention,
+                         dropout_p=dropout_p)
 
 
 def run(log_fn):
@@ -265,7 +276,8 @@ def run(log_fn):
     n_classes = meta["n_classes"]
     model = build_model(n_classes=n_classes, pretrained=False)
     attn = model.attention_name.upper()
-    log_fn(f"Membangun ResNet-18 + {attn} untuk {n_classes} kelas...")
+    label = model_label(model.attention_name)
+    log_fn(f"Membangun {label} untuk {n_classes} kelas...")
 
     # Hitung parameter
     total_params     = sum(p.numel() for p in model.parameters())
@@ -276,23 +288,24 @@ def run(log_fn):
     )
 
     log_fn("")
-    log_fn(f"Arsitektur: ResNet-18 + {attn} (4 modul)")
+    log_fn(f"Arsitektur: {label}" + ("" if model.attention_name == "none" else " (4 modul)"))
     log_fn(f"Total parameter        : {total_params:,}")
     log_fn(f"Parameter trainable    : {trainable_params:,}")
     log_fn(f"Parameter modul atensi : {attn_params:,}  ({100*attn_params/total_params:.2f}% dari total)")
     log_fn("")
 
     # Detail per modul atensi
-    log_fn(f"Detail Modul {attn}:")
-    for i, tag in enumerate(["fsca1", "fsca2", "fsca3", "fsca4"], 1):
-        ch = [64, 128, 256, 512][i - 1]
-        p  = sum(p.numel() for name, p in model.named_parameters() if name.startswith(tag))
-        log_fn(f"  {attn}{i} (layer{i}, {ch:>3} ch): {p:>7,} params")
+    if model.attention_name != "none":
+        log_fn(f"Detail Modul {attn}:")
+        for i, tag in enumerate(["fsca1", "fsca2", "fsca3", "fsca4"], 1):
+            ch = [64, 128, 256, 512][i - 1]
+            p  = sum(p.numel() for name, p in model.named_parameters() if name.startswith(tag))
+            log_fn(f"  {attn}{i} (layer{i}, {ch:>3} ch): {p:>7,} params")
 
     # Simpan summary
     import io
     buf = io.StringIO()
-    buf.write(f"Model: ResNet-18 + {attn}\n")
+    buf.write(f"Model: {label}\n")
     buf.write(f"Total params   : {total_params:,}\n")
     buf.write(f"Trainable      : {trainable_params:,}\n")
     buf.write(f"Attention params: {attn_params:,}\n")
