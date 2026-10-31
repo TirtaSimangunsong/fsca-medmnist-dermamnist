@@ -141,11 +141,14 @@ AUGMENTATION = {
 # Training FSCA (step5_training.py), dan ablasi (Step 11).
 # =========================================================
 TRAIN_HP = {
-    "epochs":        100,
+    # 40 epoch (sebelumnya 100): dengan 100 epoch model mulai overfit sekitar
+    # epoch 35 (train acc ~99%, val loss naik 0.95 -> 2.8). Karena CosineAnnealingLR
+    # memakai T_max = epochs, LR kini sudah turun ke ~0 di epoch 40.
+    "epochs":        40,
     "batch_size":    64,
     "lr":            1e-3,
     "weight_decay":  1e-4,
-    "patience":      100,    # = epochs -> early stopping praktis nonaktif
+    "patience":      40,     # = epochs -> early stopping praktis nonaktif
     "seed":          42,     # seed run utama (Step 11 memakai EXPERIMENT["seeds"])
     # Metrik validasi untuk memilih checkpoint terbaik (dan early stopping):
     #   "auc"     -> val AUC macro, makin besar makin baik (protokol resmi MedMNIST)

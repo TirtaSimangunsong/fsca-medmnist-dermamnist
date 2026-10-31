@@ -8,7 +8,7 @@ tidak hilang walau terminal ditutup.
 Contoh (dari folder root repo):
     caffeinate -i python run_ablation.py
     caffeinate -i python run_ablation.py --attentions none fsca --seeds 0 1 2 3 4
-    caffeinate -i python run_ablation.py --epochs 100
+    caffeinate -i python run_ablation.py --epochs 40
 
 `caffeinate -i` (bawaan macOS) mencegah Mac tidur selama script berjalan.
 Jika terhenti, jalankan perintah yang sama lagi: run yang sudah selesai
