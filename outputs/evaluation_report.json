@@ -2,83 +2,83 @@
   "model_path": "/Users/tirtasimangunsong/Documents/GitHub/thesis-fsca-medmnist/outputs/ResNet18_FSCA_DermaMNIST_Best.pth",
   "attention": "fsca",
   "device": "mps",
-  "tta": true,
+  "tta": false,
   "logit_adjustment_tau": 0.0,
   "tau_sweep_val": [],
-  "accuracy": 74.1646,
-  "balanced_accuracy": 60.48,
-  "f1_weighted": 0.7476,
-  "f1_macro": 0.5363,
-  "auc_macro": 0.9356,
+  "accuracy": 75.5112,
+  "balanced_accuracy": 61.6648,
+  "f1_weighted": 0.7607,
+  "f1_macro": 0.5827,
+  "auc_macro": 0.9353,
   "without_tta_or_adjustment": {
-    "accuracy": 72.419,
-    "balanced_accuracy": 61.1508,
-    "f1_macro": 0.5192,
-    "auc_macro": 0.9302
+    "accuracy": 75.5112,
+    "balanced_accuracy": 61.6648,
+    "f1_macro": 0.5827,
+    "auc_macro": 0.9353
   },
   "confusion_matrix": [
     [
-      35,
-      22,
-      3,
+      40,
+      12,
+      5,
       0,
-      4,
+      7,
       2,
       0
     ],
     [
-      12,
-      77,
+      21,
+      53,
+      7,
+      7,
       5,
-      0,
-      2,
-      4,
+      7,
       3
     ],
     [
-      19,
-      27,
-      104,
-      2,
-      23,
-      43,
-      2
+      26,
+      10,
+      102,
+      4,
+      34,
+      44,
+      0
     ],
     [
-      4,
-      6,
-      1,
-      7,
-      1,
+      2,
+      3,
+      0,
+      12,
+      2,
       4,
       0
     ],
     [
-      19,
-      12,
-      20,
-      2,
-      96,
-      67,
-      7
+      15,
+      5,
+      23,
+      1,
+      114,
+      64,
+      1
     ],
     [
-      12,
-      36,
-      55,
-      6,
-      70,
-      1142,
-      20
+      13,
+      10,
+      50,
+      5,
+      89,
+      1169,
+      5
     ],
     [
       0,
       1,
       0,
       0,
-      0,
       2,
-      26
+      2,
+      24
     ]
   ],
   "class_names": [
@@ -101,57 +101,57 @@
   ],
   "per_class": {
     "actinic keratoses and intraepithelial carcinoma": {
-      "precision": 0.3465,
-      "recall": 0.5303,
-      "f1-score": 0.4192,
+      "precision": 0.3419,
+      "recall": 0.6061,
+      "f1-score": 0.4372,
       "support": 66.0
     },
     "basal cell carcinoma": {
-      "precision": 0.4254,
-      "recall": 0.7476,
-      "f1-score": 0.5423,
+      "precision": 0.5638,
+      "recall": 0.5146,
+      "f1-score": 0.5381,
       "support": 103.0
     },
     "benign keratosis-like lesions": {
-      "precision": 0.5532,
-      "recall": 0.4727,
-      "f1-score": 0.5098,
+      "precision": 0.5455,
+      "recall": 0.4636,
+      "f1-score": 0.5012,
       "support": 220.0
     },
     "dermatofibroma": {
-      "precision": 0.4118,
-      "recall": 0.3043,
-      "f1-score": 0.35,
+      "precision": 0.4138,
+      "recall": 0.5217,
+      "f1-score": 0.4615,
       "support": 23.0
     },
     "melanoma": {
-      "precision": 0.4898,
-      "recall": 0.4305,
-      "f1-score": 0.4582,
+      "precision": 0.4506,
+      "recall": 0.5112,
+      "f1-score": 0.479,
       "support": 223.0
     },
     "melanocytic nevi": {
-      "precision": 0.9035,
-      "recall": 0.8516,
-      "f1-score": 0.8768,
+      "precision": 0.9048,
+      "recall": 0.8717,
+      "f1-score": 0.888,
       "support": 1341.0
     },
     "vascular lesions": {
-      "precision": 0.4483,
-      "recall": 0.8966,
-      "f1-score": 0.5977,
+      "precision": 0.7273,
+      "recall": 0.8276,
+      "f1-score": 0.7742,
       "support": 29.0
     },
     "macro avg": {
-      "precision": 0.5112,
-      "recall": 0.6048,
-      "f1-score": 0.5363,
+      "precision": 0.5639,
+      "recall": 0.6166,
+      "f1-score": 0.5827,
       "support": 2005.0
     },
     "weighted avg": {
-      "precision": 0.7639,
-      "recall": 0.7416,
-      "f1-score": 0.7476,
+      "precision": 0.7706,
+      "recall": 0.7551,
+      "f1-score": 0.7607,
       "support": 2005.0
     }
   },

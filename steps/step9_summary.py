@@ -201,7 +201,7 @@ def run(log_fn):
     plt.setp(ax4.get_yticklabels(), color="white", fontsize=7)
     for spine in ax4.spines.values(): spine.set_color("#555")
 
-    fig.suptitle("Summary Report — Skripsi Tirta (01082230021)\n"
+    fig.suptitle("Summary Report\n"
                  "Fused Spatial-Channel Attention untuk Klasifikasi Kanker Kulit",
                  color="white", fontsize=12, fontweight="bold")
     plt.savefig(SUMMARY_PNG, dpi=130, bbox_inches="tight", facecolor="#1a1a1a")
