@@ -3,6 +3,19 @@ gui.py — Klasifikasi Kanker Kulit
 =============================================
 GUI terintegrasi penuh dengan 10 Step ML pipeline FSCA.
 Author : Tirta (01082230021)
+
+Urutan step:
+   1. Ekstraksi            -> step1_extract.py
+   2. Preprocessing        -> step2_preprocess.py
+   3. Split Data           -> step3_split.py
+   4. Baseline ResNet-18   -> step_baseline.py   (train + evaluasi tanpa atensi)
+   5. Model FSCA           -> step4_model.py
+   6. Training FSCA        -> step5_training.py  (langsung menghasilkan model final)
+   7. Evaluation           -> step7_evaluation.py
+   8. Grad-CAM             -> step8_gradcam.py
+   9. Summary              -> step9_summary.py
+  10. Inference            -> step10_inference.py
+Fine-tuning (Fase 2) sudah dihapus dari pipeline.
 """
 
 import tkinter as tk
@@ -87,7 +100,7 @@ class CancerSkinCADApp:
         self.root.configure(bg="#2d2d2d")
 
         # State
-        self.step_6_7_done = False
+        self.model_ready   = False   # True setelah Step 6 (training) & Step 7 (evaluasi)
         self.nav_tabs      = {}
         self.current_step  = ""
         self.chart_images  = {}   # { step_name: path }
@@ -112,9 +125,9 @@ class CancerSkinCADApp:
         nav_frame.pack(fill="x", side="top")
 
         steps = [
-            "Step 1: Ekstraksi",   "Step 2: Preprocessing", "Step 3: Split Data",
-            "Step 4: Model FSCA",  "Step 5: Training",       "Step 6: Finetune",
-            "Step 7: Evaluation",  "Step 8: Grad-CAM",       "Step 9: Summary",
+            "Step 1: Ekstraksi",          "Step 2: Preprocessing", "Step 3: Split Data",
+            "Step 4: Baseline ResNet-18", "Step 5: Model FSCA",    "Step 6: Training FSCA",
+            "Step 7: Evaluation",         "Step 8: Grad-CAM",      "Step 9: Summary",
             "Step 10: Inference",
         ]
         for col in range(len(steps)):
@@ -252,7 +265,7 @@ class CancerSkinCADApp:
         if "Step 8" in target_step:
             self.model_lf.pack(fill="x", before=self.results_lf, pady=4)
             self.files_lf.pack(fill="x", before=self.results_lf, pady=4)
-            if self.step_6_7_done:
+            if self.model_ready:
                 final_path = PATHS["final_model"]
                 size_mb = os.path.getsize(final_path) / 1e6 if os.path.exists(final_path) else 0
                 self.model_status_label.config(
@@ -265,7 +278,7 @@ class CancerSkinCADApp:
                 )
             else:
                 self.model_status_label.config(
-                    text="(Tidak ada model. Jalankan Step 6 dan 7 terlebih dahulu.)",
+                    text="(Tidak ada model. Jalankan Step 6: Training FSCA dan Step 7: Evaluation terlebih dahulu.)",
                     fg="#ff6b6b"
                 )
                 self.files_status_label.config(text="(Menunggu...)", fg="#aaaaaa")
@@ -294,10 +307,11 @@ class CancerSkinCADApp:
     def run_current_step(self):
         step = self.current_step
 
-        if "Step 8" in step and not self.step_6_7_done:
+        if "Step 8" in step and not self.model_ready:
             messagebox.showwarning(
                 "Akses Ditolak",
-                "Model .pth belum tersedia!\nJalankan Step 6 dan Step 7 terlebih dahulu."
+                "Model .pth belum tersedia!\n"
+                "Jalankan Step 6: Training FSCA dan Step 7: Evaluation terlebih dahulu."
             )
             self.write_terminal("Error: Eksekusi Grad-CAM dibatalkan — model belum ada.")
             return
@@ -321,18 +335,18 @@ class CancerSkinCADApp:
         error  = None
 
         try:
-            if   step == "Step 1: Ekstraksi":     import step1_extract    as m; result = m.run(self.write_terminal)
-            elif step == "Step 2: Preprocessing": import step2_preprocess as m; result = m.run(self.write_terminal)
-            elif step == "Step 3: Split Data":    import step3_split      as m; result = m.run(self.write_terminal)
-            elif step == "Step 4: Model FSCA":    import step4_model      as m; result = m.run(self.write_terminal)
-            elif step == "Step 5: Training":      import step5_training   as m; result = m.run(self.write_terminal)
-            elif step == "Step 6: Finetune":      import step6_finetune   as m; result = m.run(self.write_terminal)
+            if   step == "Step 1: Ekstraksi":          import step1_extract    as m; result = m.run(self.write_terminal)
+            elif step == "Step 2: Preprocessing":      import step2_preprocess as m; result = m.run(self.write_terminal)
+            elif step == "Step 3: Split Data":         import step3_split      as m; result = m.run(self.write_terminal)
+            elif step == "Step 4: Baseline ResNet-18": import step_baseline    as m; result = m.run(self.write_terminal)
+            elif step == "Step 5: Model FSCA":         import step4_model      as m; result = m.run(self.write_terminal)
+            elif step == "Step 6: Training FSCA":      import step5_training   as m; result = m.run(self.write_terminal)
             elif step == "Step 7: Evaluation":
                 import step7_evaluation as m
                 result = m.run(self.write_terminal)
                 final = PATHS["final_model"]
                 if os.path.exists(final):
-                    self.step_6_7_done = True
+                    self.model_ready = True
             elif step == "Step 8: Grad-CAM":      import step8_gradcam    as m; result = m.run(self.write_terminal)
             elif step == "Step 9: Summary":       import step9_summary    as m; result = m.run(self.write_terminal)
             elif step == "Step 10: Inference":    import step10_inference as m; result = m.run(self.write_terminal)

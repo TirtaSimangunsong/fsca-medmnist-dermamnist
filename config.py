@@ -5,7 +5,7 @@ Single source of truth untuk semua path, parameter dataset, dan
 hyperparameter yang sebelumnya tersebar/diduplikasi di step1–step11.
 
 CARA PAKAI di setiap step (contoh):
-    from config import PATHS, DATASET, TRAIN_HP, FINETUNE_HP
+    from config import PATHS, DATASET, TRAIN_HP
 
     train_ds = DermaMNIST(split="train", download=True, size=DATASET["image_size"])
     optimizer = AdamW(model.parameters(), lr=TRAIN_HP["lr"], weight_decay=TRAIN_HP["weight_decay"])
@@ -32,6 +32,16 @@ PERUBAHAN (finalisasi kode)
 - DEVICE_CONFIG["device"] = "auto" (MPS -> CUDA -> CPU), dipakai lewat
   steps/common.py::resolve_device.
 - TRAIN_HP["seed"] ditambahkan agar run utama bisa direproduksi.
+
+PERUBAHAN (baseline + tanpa finetune)
+--------------------------------------
+- Fine-tuning (Fase 2, Step 6 lama) DIHAPUS: FINETUNE_HP, finetune_history,
+  dan finetune_curve_chart tidak ada lagi. Model final = checkpoint terbaik
+  training FSCA (step5_training.py menyalinnya ke final_model).
+- Path baseline ditambahkan (baseline_model, baseline_history,
+  baseline_curve_chart, baseline_report, baseline_cm_chart) untuk Step
+  "Baseline ResNet-18" (step_baseline.py), yaitu ResNet-18 polos
+  (attention="none") dengan resep training yang sama dengan FSCA.
 """
 
 import os
@@ -63,9 +73,15 @@ PATHS = {
     "checkpoint_best":    os.path.join(OUTPUT_DIR, "checkpoint_best.pth"),
     "final_model":        os.path.join(OUTPUT_DIR, "ResNet18_FSCA_DermaMNIST_Best.pth"),
 
+    # Baseline ResNet-18 tanpa modul atensi (step_baseline.py)
+    "baseline_model":       os.path.join(OUTPUT_DIR, "ResNet18_Baseline_DermaMNIST_Best.pth"),
+    "baseline_history":     os.path.join(OUTPUT_DIR, "baseline_training_history.json"),
+    "baseline_curve_chart": os.path.join(OUTPUT_DIR, "baseline_training_curve.png"),
+    "baseline_report":      os.path.join(OUTPUT_DIR, "baseline_evaluation_report.json"),
+    "baseline_cm_chart":    os.path.join(OUTPUT_DIR, "baseline_confusion_matrix.png"),
+
     # History training
     "training_history":   os.path.join(OUTPUT_DIR, "training_history.json"),
-    "finetune_history":   os.path.join(OUTPUT_DIR, "finetune_history.json"),
 
     # Evaluasi
     "evaluation_report":  os.path.join(OUTPUT_DIR, "evaluation_report.json"),
@@ -79,7 +95,6 @@ PATHS = {
     # Chart / visualisasi (PNG)
     "split_distribution_chart": os.path.join(OUTPUT_DIR, "split_distribution.png"),
     "training_curve_chart":     os.path.join(OUTPUT_DIR, "training_curve.png"),
-    "finetune_curve_chart":     os.path.join(OUTPUT_DIR, "finetune_curve.png"),
     "confusion_matrix_chart":   os.path.join(OUTPUT_DIR, "confusion_matrix.png"),
     "gradcam_grid_chart":       os.path.join(OUTPUT_DIR, "gradcam_grid.png"),
     "summary_report_chart":     os.path.join(OUTPUT_DIR, "summary_report.png"),
@@ -121,7 +136,9 @@ AUGMENTATION = {
 
 
 # =========================================================
-# HYPERPARAMETER — STEP 5 (TRAINING AWAL / FASE 1)
+# HYPERPARAMETER TRAINING
+# Dipakai SAMA PERSIS oleh Baseline ResNet-18 (step_baseline.py),
+# Training FSCA (step5_training.py), dan ablasi (Step 11).
 # =========================================================
 TRAIN_HP = {
     "epochs":        100,
@@ -136,26 +153,6 @@ TRAIN_HP = {
     #   "bal_acc" -> val balanced accuracy
     #   "acc"     -> val accuracy (perilaku lama; berisik & buta overconfidence)
     "select_metric": "auc",
-}
-
-
-# =========================================================
-# HYPERPARAMETER — STEP 6 (FINETUNING / FASE 2)
-# =========================================================
-FINETUNE_HP = {
-    # False -> Step 6 hanya menyalin checkpoint Fase 1 sebagai model final.
-    # True  -> fine-tuning dijalankan; model final HANYA diganti bila metrik
-    #          validasi (TRAIN_HP["select_metric"]) lebih baik dari Fase 1.
-    "enabled":          False,
-    "epochs":           10,
-    "batch_size":       32,
-    "lr":               1e-5,   # 100x lebih kecil dari Fase 1 (Fase 1 sudah konvergen)
-    "weight_decay":     1e-4,
-    "label_smoothing":  0.1,
-    "patience":         5,
-    # Modul tingkat-atas yang dilatih saat fine-tuning (dicocokkan persis dengan
-    # nama modul paling luar, mis. "layer3.0.conv1" -> "layer3"); sisanya dibekukan
-    "unfreeze_keys": ["layer3", "layer4", "fsca3", "fsca4", "fc"],
 }
 
 
@@ -279,7 +276,5 @@ if __name__ == "__main__":
     print(f"  Image size   : {DATASET['image_size']}")
     print(f"  Attention    : {MODEL_CONFIG['attention']}")
     print(f"  Train epochs : {TRAIN_HP['epochs']} (pilih ckpt: {TRAIN_HP['select_metric']})")
-    print(f"  Finetune     : {'aktif' if FINETUNE_HP['enabled'] else 'nonaktif'}")
-    print(f"  Finetune lr  : {FINETUNE_HP['lr']}")
     print(f"  TTA          : {EVAL_CONFIG['tta']}")
     print(f"  Auto-tune tau: {IMBALANCE['auto_tune_tau']}")

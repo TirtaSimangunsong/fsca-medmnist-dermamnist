@@ -1,6 +1,9 @@
 """
-Step 5 - Training (Fase 1)
-============================
+Step 6 (GUI) - Training ResNet-18 + FSCA
+==========================================
+Satu-satunya fase training (fine-tuning / Fase 2 sudah dihapus).
+Checkpoint terbaik langsung menjadi model final yang dipakai Step 7–10.
+
 Melatih SELURUH model (tidak ada layer yang dibekukan) dari bobot awal
 ImageNet, dengan:
 - Penanganan class imbalance: Weighted Cross-Entropy. Bobot per kelas
@@ -17,16 +20,19 @@ ImageNet, dengan:
   patience = epochs berarti praktis nonaktif)
 - Setiap epoch mencatat: loss, acc, balanced acc, dan AUC validasi
 
-Fungsi train_one_run() juga dipakai Step 11 (ablasi multi-seed).
+Fungsi train_one_run() juga dipakai Step 4: Baseline ResNet-18
+(step_baseline.py, attention="none") dan Step 11 (ablasi multi-seed).
 
-Output: outputs/checkpoint_best.pth, outputs/training_curve.png,
-        outputs/training_history.json
+Output: outputs/checkpoint_best.pth,
+        outputs/ResNet18_FSCA_DermaMNIST_Best.pth (salinan = model final),
+        outputs/training_curve.png, outputs/training_history.json
 """
 
 import os
 import sys
 import json
 import time
+import shutil
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from config import PATHS, TRAIN_HP, MODEL_CONFIG, IMBALANCE
@@ -36,6 +42,7 @@ META_PATH     = PATHS["dataset_meta"]
 CONFIG_PATH   = PATHS["preprocess_config"]
 SPLIT_PATH    = PATHS["split_info"]
 CKPT_PATH     = PATHS["checkpoint_best"]
+FINAL_MODEL   = PATHS["final_model"]
 HISTORY_PATH  = PATHS["training_history"]
 CURVE_PATH    = PATHS["training_curve_chart"]
 
@@ -206,7 +213,7 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
 
 def run(log_fn, hp_override=None):
     """
-    Entry point GUI (Step 5).
+    Entry point GUI (Step 6: Training FSCA).
     hp_override: dict opsional untuk menimpa TRAIN_HP.
     """
     sys.path.insert(0, os.path.dirname(__file__))
@@ -226,11 +233,22 @@ def run(log_fn, hp_override=None):
     result = train_one_run(hp, log_fn, ckpt_path=CKPT_PATH)
     history = result["history"]
 
+    # Tanpa fine-tuning: checkpoint terbaik langsung menjadi model final
+    shutil.copyfile(CKPT_PATH, FINAL_MODEL)
+    log_fn(f"Model final (tanpa fine-tuning) -> {FINAL_MODEL}")
+
+    # Sisa output fine-tuning lama dibuang agar tidak terbaca sebagai hasil terbaru
+    for stale in ("finetune_history.json", "finetune_curve.png"):
+        stale_path = os.path.join(OUTPUT_DIR, stale)
+        if os.path.exists(stale_path):
+            os.remove(stale_path)
+            log_fn(f"Output fine-tuning lama dihapus: {stale}")
+
     with open(HISTORY_PATH, "w") as f:
         json.dump(history, f, indent=2)
 
     log_fn("Membuat plot training curve...")
-    common.plot_history(history, CURVE_PATH, title_prefix="Fase 1")
+    common.plot_history(history, CURVE_PATH, title_prefix=f"ResNet-18 + {MODEL_CONFIG['attention'].upper()}")
     log_fn(f"Chart tersimpan → {CURVE_PATH}")
 
     return {

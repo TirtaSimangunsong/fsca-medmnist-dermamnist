@@ -23,7 +23,6 @@ from config import PATHS, DATASET
 OUTPUT_DIR   = PATHS["output_dir"]
 META_PATH    = PATHS["dataset_meta"]
 REPORT_PATH  = PATHS["evaluation_report"]
-FT_HISTORY   = PATHS["finetune_history"]
 TR_HISTORY   = PATHS["training_history"]
 FINAL_MODEL  = PATHS["final_model"]
 SUMMARY_PNG  = PATHS["summary_report_chart"]
@@ -55,15 +54,11 @@ def run(log_fn):
     with open(META_PATH)   as f: meta    = json.load(f)
     with open(REPORT_PATH) as f: report  = json.load(f)
 
-    # Kurva: pakai history fine-tuning bila Step 6 benar-benar melatih,
-    # selain itu history Fase 1 (Step 5).
+    # Kurva training model final (Step 6: Training FSCA; tidak ada fine-tuning)
     history, hist_label = {}, ""
-    if os.path.exists(FT_HISTORY):
-        with open(FT_HISTORY) as f: history = json.load(f)
-        hist_label = "Fine-tuning"
-    elif os.path.exists(TR_HISTORY):
+    if os.path.exists(TR_HISTORY):
         with open(TR_HISTORY) as f: history = json.load(f)
-        hist_label = "Fase 1"
+        hist_label = "Training"
     best_epoch    = history.get("best_epoch")
     select_metric = history.get("select_metric", "?")
 
@@ -174,7 +169,7 @@ def run(log_fn):
              bbox=dict(facecolor="#333", alpha=0.6, boxstyle="round,pad=0.5"))
     ax2.set_title("Info Model", color="white", fontweight="bold")
 
-    # 3. Kurva validasi (bawah kiri): Fine-tuning bila ada, selain itu Fase 1
+    # 3. Kurva validasi (bawah kiri): history training model final
     ax3 = fig.add_subplot(gs[1, :2])
     ax3.set_facecolor("#1a1a1a")
     if history:

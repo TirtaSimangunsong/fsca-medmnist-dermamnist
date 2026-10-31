@@ -29,8 +29,8 @@ Pembanding (dipilih lewat MODEL_CONFIG["attention"] atau argumen attention):
 Modul atensi dipasang setelah layer1, layer2, layer3, dan layer4.
 Nama atribut slotnya tetap fsca1..fsca4 untuk SEMUA pilihan atensi agar:
   (a) checkpoint lama tetap bisa dimuat,
-  (b) FINETUNE_HP["unfreeze_keys"] ("fsca3", "fsca4") tetap berlaku,
-  (c) hook Grad-CAM ke model.fsca4 tetap valid.
+  (b) hook Grad-CAM ke model.fsca4 tetap valid.
+Baseline ResNet-18 (step_baseline.py) = attention "none" (slot = Identity).
 
 Disimpan ke outputs/model_summary.txt untuk dokumentasi.
 """

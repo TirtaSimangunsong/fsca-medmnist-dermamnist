@@ -15,7 +15,7 @@ Fungsi yang dipakai lebih dari satu step:
 - selection_key()/is_better() : aturan memilih checkpoint terbaik (TRAIN_HP["select_metric"])
 - plot_history()              : kurva loss / accuracy / val AUC
 
-Dipakai oleh: step5_training (train_one_run), step6_finetune, step7_evaluation,
+Dipakai oleh: step_baseline, step5_training (train_one_run), step7_evaluation,
 step11_ablation.
 """
 

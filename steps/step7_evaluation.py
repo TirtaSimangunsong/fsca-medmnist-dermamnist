@@ -1,7 +1,9 @@
 """
 Step 7 - Evaluation pada Test Set
 ====================================
-Evaluasi model final dari Step 6 pada test set DermaMNIST.
+Evaluasi model final ResNet-18 + FSCA (dari Step 6: Training FSCA) pada test
+set DermaMNIST. Fungsi evaluate_checkpoint() juga dipakai Step 4: Baseline
+ResNet-18 agar kedua model dievaluasi dengan protokol yang identik.
 
 Menghasilkan:
 - Accuracy, Balanced Accuracy, Weighted/Macro F1, Macro AUC
@@ -79,19 +81,33 @@ def _plot_confusion(cm, class_names, acc, bal, auc, path):
 
 
 def run(log_fn):
+    """Entry point GUI (Step 7): evaluasi model final ResNet-18 + FSCA."""
+    model_path = FINAL_MODEL if os.path.exists(FINAL_MODEL) else CKPT_PATH
+    for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"),
+                       (model_path, "Step 6: Training FSCA")]:
+        if not os.path.exists(path):
+            log_fn(f"ERROR: {os.path.basename(path)} tidak ditemukan. Jalankan {name} dulu.")
+            raise FileNotFoundError(path)
+
+    evaluate_checkpoint(model_path, log_fn)
+
+
+def evaluate_checkpoint(model_path, log_fn, attention=None,
+                        report_path=REPORT_PATH, cm_path=CM_PATH):
+    """
+    Evaluasi satu checkpoint di test set dengan protokol yang sama
+    (EVAL_CONFIG + IMBALANCE). Dipakai Step 7 (FSCA) dan step_baseline.py
+    (ResNet-18 tanpa atensi) agar angka keduanya bisa dibandingkan langsung.
+
+    attention : None -> MODEL_CONFIG["attention"]; "none" untuk baseline.
+    Return    : dict laporan evaluasi (juga disimpan ke report_path).
+    """
     import torch
     from sklearn.metrics import classification_report, confusion_matrix
 
     sys.path.insert(0, os.path.dirname(__file__))
     from step4_model import build_model
     import common
-
-    model_path = FINAL_MODEL if os.path.exists(FINAL_MODEL) else CKPT_PATH
-    for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"),
-                       (model_path, "Step 5/6")]:
-        if not os.path.exists(path):
-            log_fn(f"ERROR: {os.path.basename(path)} tidak ditemukan. Jalankan {name} dulu.")
-            raise FileNotFoundError(path)
 
     ensure_dirs()
     with open(META_PATH) as f:
@@ -105,8 +121,8 @@ def run(log_fn):
 
     device = common.resolve_device(log_fn=log_fn)
 
-    log_fn(f"Memuat model final: {os.path.basename(model_path)}")
-    model = build_model(n_classes=n_classes, pretrained=False).to(device)
+    log_fn(f"Memuat model: {os.path.basename(model_path)}")
+    model = build_model(n_classes=n_classes, pretrained=False, attention=attention).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     log_fn(f"Model berhasil dimuat (atensi: {model.attention_name.upper()}).")
@@ -172,8 +188,8 @@ def run(log_fn):
 
     log_fn("\nMembuat confusion matrix...")
     cm = confusion_matrix(y_true, y_pred)
-    _plot_confusion(cm, class_names, acc, bal, auc, CM_PATH)
-    log_fn(f"Confusion matrix tersimpan -> {CM_PATH}")
+    _plot_confusion(cm, class_names, acc, bal, auc, cm_path)
+    log_fn(f"Confusion matrix tersimpan -> {cm_path}")
 
     eval_result = {
         "model_path":     model_path,
@@ -200,10 +216,11 @@ def run(log_fn):
             name: {k: round(v, 4) for k, v in data.items() if isinstance(v, (int, float))}
             for name, data in report.items() if isinstance(data, dict)
         },
-        "chart_path": CM_PATH,
+        "chart_path": cm_path,
     }
-    with open(REPORT_PATH, "w") as f:
+    with open(report_path, "w") as f:
         json.dump(eval_result, f, indent=2)
-    log_fn(f"Evaluation report tersimpan -> {REPORT_PATH}")
+    log_fn(f"Evaluation report tersimpan -> {report_path}")
+    return eval_result
 
     return eval_result
