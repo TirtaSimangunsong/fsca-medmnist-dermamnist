@@ -42,6 +42,14 @@ PERUBAHAN (baseline + tanpa finetune)
   baseline_curve_chart, baseline_report, baseline_cm_chart) untuk Step
   "Baseline ResNet-18" (step_baseline.py), yaitu ResNet-18 polos
   (attention="none") dengan resep training yang sama dengan FSCA.
+
+PERUBAHAN (feedback dosen 26 Okt 2026)
+---------------------------------------
+- TRAIN_HP epochs 100 -> 40 (overfit mulai ~epoch 35).
+- IMBALANCE["melanoma_bias"]: bias melanoma post-hoc dituning di validasi.
+- IMBALANCE["class_weight_boost"]: opsi pengali bobot loss per kelas.
+- MAIN_MODEL + main_model_spec(): baseline menjadi model utama; FSCA pembanding.
+- PATHS["comparison_report"]: tabel baseline vs FSCA dari Step 7.
 """
 
 import os
@@ -85,6 +93,7 @@ PATHS = {
 
     # Evaluasi
     "evaluation_report":  os.path.join(OUTPUT_DIR, "evaluation_report.json"),
+    "comparison_report":  os.path.join(OUTPUT_DIR, "comparison_report.json"),
     "summary_json":       os.path.join(OUTPUT_DIR, "summary_report.json"),
 
     # Ablasi multi-seed (Step 11)
@@ -195,7 +204,55 @@ IMBALANCE = {
     "logit_adjustment_tau": 0.0,
     "auto_tune_tau":        False,
     "tau_grid":             [0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5],
+
+    # --- Fokus kelas melanoma (feedback dosen 26 Okt 2026, poin 1) ---
+    # (a) Bias melanoma post-hoc saat evaluasi (Step 4 & Step 7), TANPA training ulang:
+    #     logit melanoma + bias. Bias dipilih di VALIDATION: recall melanoma
+    #     setinggi mungkin selama balanced accuracy val tidak turun lebih dari
+    #     max_bal_acc_drop poin dan accuracy val tidak turun lebih dari
+    #     max_acc_drop poin. Lalu dilaporkan di TEST. Angka tanpa bias tetap
+    #     disimpan di laporan ("without_tta_or_adjustment" & "melanoma_bias").
+    "melanoma_bias": {
+        "enabled":          True,
+        "class_name":       "melanoma",
+        "grid":             [0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0],
+        "max_bal_acc_drop": 0.0,
+        "max_acc_drop":     2.0,
+    },
+    # (b) Pengali bobot loss per kelas saat TRAINING (opsional, butuh training ulang).
+    #     1.0 = mati. Contoh eksperimen: {"melanoma": 1.5}
+    "class_weight_boost":   {"melanoma": 1.0},
 }
+
+
+# =========================================================
+# MODEL UTAMA (feedback dosen 26 Okt 2026, poin 3)
+# =========================================================
+# "baseline" -> ResNet-18 tanpa atensi (Step 4) menjadi model utama untuk
+#               Grad-CAM (Step 8), Summary (Step 9), dan Inference (Step 10).
+#               FSCA dilaporkan sebagai model pembanding (Step 7).
+# "fsca"     -> perilaku lama: ResNet-18 + FSCA (Step 6) sebagai model utama.
+MAIN_MODEL = "baseline"
+
+
+def main_model_spec():
+    """Path dan identitas model utama sesuai MAIN_MODEL."""
+    if MAIN_MODEL == "baseline":
+        return {"key": "baseline", "attention": "none",
+                "label": "ResNet-18 Baseline",
+                "model_path": PATHS["baseline_model"],
+                "report":     PATHS["baseline_report"],
+                "history":    PATHS["baseline_history"],
+                "made_by":    "Step 4: Baseline ResNet-18"}
+    if MAIN_MODEL == "fsca":
+        attn = MODEL_CONFIG["attention"]
+        return {"key": "fsca", "attention": attn,
+                "label": f"ResNet-18 + {attn.upper()}",
+                "model_path": PATHS["final_model"],
+                "report":     PATHS["evaluation_report"],
+                "history":    PATHS["training_history"],
+                "made_by":    "Step 6: Training FSCA"}
+    raise ValueError(f"MAIN_MODEL='{MAIN_MODEL}' tidak dikenal. Pilihan: 'baseline' | 'fsca'")
 
 
 # =========================================================
@@ -281,3 +338,5 @@ if __name__ == "__main__":
     print(f"  Train epochs : {TRAIN_HP['epochs']} (pilih ckpt: {TRAIN_HP['select_metric']})")
     print(f"  TTA          : {EVAL_CONFIG['tta']}")
     print(f"  Auto-tune tau: {IMBALANCE['auto_tune_tau']}")
+    print(f"  Bias melanoma: {'aktif' if IMBALANCE['melanoma_bias']['enabled'] else 'nonaktif'}")
+    print(f"  Model utama  : {main_model_spec()['label']}")

@@ -3,8 +3,11 @@ Step 9 - Summary Report
 =========================
 Mengumpulkan hasil Step 1–8 dan membuat:
 - Summary card: accuracy, balanced accuracy, F1, AUC, model size, params
-- Info evaluasi: device, modul atensi, TTA, tau logit adjustment
-  (dibaca dari evaluation_report.json Step 7, bukan di-hardcode)
+- Info evaluasi: device, modul atensi, TTA, tau logit adjustment, bias melanoma
+  (dibaca dari laporan evaluasi MODEL UTAMA, bukan di-hardcode)
+- Model utama = config.MAIN_MODEL (default "baseline", feedback dosen
+  26 Okt 2026); bila comparison_report.json (Step 7) ada, perbandingan
+  baseline vs FSCA ikut dicetak.
 - Tabel perbandingan literatur
 - Summary chart
 
@@ -18,13 +21,11 @@ import json
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import PATHS, DATASET
+from config import PATHS, DATASET, main_model_spec
 
 OUTPUT_DIR   = PATHS["output_dir"]
 META_PATH    = PATHS["dataset_meta"]
-REPORT_PATH  = PATHS["evaluation_report"]
-TR_HISTORY   = PATHS["training_history"]
-FINAL_MODEL  = PATHS["final_model"]
+COMPARE_PATH = PATHS["comparison_report"]
 SUMMARY_PNG  = PATHS["summary_report_chart"]
 SUMMARY_JSON = PATHS["summary_json"]
 
@@ -42,9 +43,16 @@ def run(log_fn):
     import matplotlib.pyplot as plt
     import matplotlib.gridspec as gridspec
 
+    spec        = main_model_spec()
+    REPORT_PATH = spec["report"]
+    TR_HISTORY  = spec["history"]
+    FINAL_MODEL = spec["model_path"]
+    label       = spec["label"]
+
     # Cek dependensi file
     missing = []
-    for path, name in [(META_PATH, "Step 1"), (REPORT_PATH, "Step 7"), (FINAL_MODEL, "Step 6")]:
+    for path, name in [(META_PATH, "Step 1"), (REPORT_PATH, f"{spec['made_by']} / Step 7"),
+                       (FINAL_MODEL, spec["made_by"])]:
         if not os.path.exists(path):
             missing.append(f"{name} ({os.path.basename(path)})")
     if missing:
@@ -54,7 +62,7 @@ def run(log_fn):
     with open(META_PATH)   as f: meta    = json.load(f)
     with open(REPORT_PATH) as f: report  = json.load(f)
 
-    # Kurva training model final (Step 6: Training FSCA; tidak ada fine-tuning)
+    # Kurva training model utama (tidak ada fine-tuning)
     history, hist_label = {}, ""
     if os.path.exists(TR_HISTORY):
         with open(TR_HISTORY) as f: history = json.load(f)
@@ -81,12 +89,13 @@ def run(log_fn):
     sys.path.insert(0, os.path.dirname(__file__))
     from step4_model import build_model
     # pretrained=False: hanya untuk menghitung parameter, tidak perlu unduh bobot ImageNet
-    model = build_model(n_classes=meta["n_classes"], pretrained=False)
+    model = build_model(n_classes=meta["n_classes"], pretrained=False,
+                        attention=spec["attention"])
     total_params = sum(p.numel() for p in model.parameters())
     attn = report.get("attention", model.attention_name).upper()
 
     log_fn("=" * 60)
-    log_fn(f"       RINGKASAN PERFORMA MODEL ResNet-18 + {attn}")
+    log_fn(f"       RINGKASAN PERFORMA MODEL UTAMA: {label}")
     log_fn("=" * 60)
     log_fn(f"  Dataset        : DermaMNIST ({img_size}×{img_size} piksel)")
     log_fn(f"  Jumlah Kelas   : {meta['n_classes']}")
@@ -97,7 +106,14 @@ def run(log_fn):
     log_fn(f"  F1 Weighted    : {f1_w:.4f}")
     log_fn(f"  F1 Macro       : {f1_mac:.4f}")
     log_fn(f"  AUC Macro      : {auc:.4f}")
-    log_fn(f"  Evaluasi       : TTA={'ya' if tta else 'tidak'}, tau={tau}")
+    mel_bias = (report.get("melanoma_bias") or {}).get("bias", 0.0)
+    mel_rec  = report.get("melanoma_recall")
+    log_fn(f"  Evaluasi       : TTA={'ya' if tta else 'tidak'}, tau={tau}, bias melanoma={mel_bias}")
+    if mel_rec is not None:
+        mb = report.get("melanoma_bias") or {}
+        before = (mb.get("test_without_bias") or {}).get("recall")
+        extra = f" (tanpa bias: {before:.3f})" if before is not None else ""
+        log_fn(f"  Recall Melanoma: {mel_rec:.3f}{extra}")
     if best_epoch:
         log_fn(f"  Checkpoint     : epoch {best_epoch} ({hist_label}), dipilih via val {select_metric}")
     plain = report.get("without_tta_or_adjustment")
@@ -117,13 +133,25 @@ def run(log_fn):
         ("CNN + ViT Hybrid [Arshed 2023]",            "high",  "—",     "—"),
         ("Transfer + Deep Attention [Alotaibi 2025]", "high",  "—",     "—"),
         ("EDA-ResNet50 [Hosny 2025]",                 "high",  "—",     "—"),
-        (f"ResNet-18 + {attn} (Ours)",                f"{img_size}×{img_size}",
+        (f"{label} (Ours)",                           f"{img_size}×{img_size}",
          f"{acc:.2f}%", f"{f1_w:.4f}"),
     ]
     log_fn(f"  {'Model':<48} {'Res':>6} {'Acc':>8} {'F1-W':>8}")
     log_fn("  " + "-" * 75)
     for row in comparison:
         log_fn(f"  {row[0]:<48} {row[1]:>6} {row[2]:>8} {row[3]:>8}")
+
+    # Perbandingan baseline vs FSCA (dari Step 7, 1 seed)
+    comparison_tbl = None
+    if os.path.exists(COMPARE_PATH):
+        with open(COMPARE_PATH) as f:
+            comparison_tbl = json.load(f)
+        log_fn(f"\nPerbandingan {comparison_tbl['baseline']} vs {comparison_tbl['other']} "
+               f"(Step 7, 1 seed):")
+        for row in comparison_tbl["metrics"]:
+            log_fn(f"  {row['metric']:<22} {row['baseline']:>12} {row['other']:>12} "
+                   f"{row['diff']:>+10}")
+        log_fn("  Kesimpulan akhir: mean +/- std 5 seed dari Step 11 (run_ablation.py).")
 
     # ---- BUAT SUMMARY CHART ----
     log_fn("\nMembuat summary chart...")
@@ -139,7 +167,7 @@ def run(log_fn):
     colors_m = ["#4fc3f7", "#ba68c8", "#81c784", "#ffb74d", "#f06292"]
     bars = ax1.barh(metrics_names, metrics_vals, color=colors_m, edgecolor="#333", height=0.5)
     ax1.set_xlim(0, 105)
-    ax1.set_title(f"Metrics Utama ResNet-18 + {attn} (x100 untuk F1/AUC)",
+    ax1.set_title(f"Metrics Utama {label} (x100 untuk F1/AUC)",
                   color="white", fontweight="bold")
     ax1.tick_params(colors="white")
     for spine in ax1.spines.values(): spine.set_color("#555")
@@ -155,14 +183,15 @@ def run(log_fn):
         f"Model Info\n"
         f"{'─'*22}\n"
         f"Arch   : ResNet-18\n"
-        f"Modul  : {attn} ×4\n"
+        f"Modul  : {'tanpa atensi' if attn == 'NONE' else attn + ' ×4'}\n"
         f"Params : {total_params/1e6:.2f}M\n"
         f"Size   : {model_mb:.1f} MB\n"
         f"Input  : {img_size}×{img_size} px\n"
         f"Kelas  : {meta['n_classes']}\n"
         f"Device : {device}\n"
         f"TTA    : {'ya' if tta else 'tidak'}\n"
-        f"tau    : {tau}"
+        f"tau    : {tau}\n"
+        f"Bias mel: {mel_bias}"
     )
     ax2.text(0.1, 0.9, info_text, transform=ax2.transAxes,
              color="white", fontsize=9.5, va="top", fontfamily="monospace",
@@ -210,7 +239,12 @@ def run(log_fn):
     log_fn(f"Summary chart tersimpan -> {SUMMARY_PNG}")
 
     summary = {
+        "main_model":        spec["key"],
+        "model_label":       label,
         "attention":         attn.lower(),
+        "melanoma_recall":   mel_rec,
+        "melanoma_bias":     mel_bias,
+        "comparison":        comparison_tbl,
         "accuracy":          acc,
         "balanced_accuracy": bal,
         "f1_weighted":       f1_w,

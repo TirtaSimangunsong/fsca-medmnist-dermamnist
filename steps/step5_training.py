@@ -109,6 +109,12 @@ def train_one_run(hp, log_fn, ckpt_path=CKPT_PATH, attention=None, seed=None, ta
     # Loss: Weighted Cross-Entropy (tanpa WeightedRandomSampler)
     mode = IMBALANCE["loss_weight_mode"]
     weights = common.compute_loss_class_weights(dinfo["class_counts"], mode)
+    # Pengali bobot per kelas (IMBALANCE["class_weight_boost"], 1.0 = mati)
+    name_to_idx = {v: int(k) for k, v in meta.get("class_map", {}).items()}
+    for cls_name, factor in IMBALANCE.get("class_weight_boost", {}).items():
+        if factor != 1.0 and cls_name in name_to_idx:
+            weights[name_to_idx[cls_name]] *= factor
+            log_fn(f"{prefix}Bobot loss '{cls_name}' dikali {factor}")
     class_weights_tensor = torch.tensor(weights, dtype=torch.float32).to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
     log_fn(f"{prefix}Loss: Weighted CE (mode={mode}, rasio maks/min "

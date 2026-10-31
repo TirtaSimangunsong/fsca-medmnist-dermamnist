@@ -25,6 +25,11 @@ Perbaikan dari versi sebelumnya
    data yang sama, jadi pasangan per seed adalah desain yang benar.
 4. History validasi tiap run disimpan (kurva per run untuk lampiran).
 5. Estimasi waktu selesai (ETA) dicatat setelah setiap run.
+6. (Feedback dosen 26 Okt 2026, poin 4) Recall PER KELAS dicatat tiap run dan
+   diringkas sebagai mean +/- std antar seed, khususnya kelas minoritas
+   (melanoma, dermatofibroma). Checkpoint yang sudah ada hanya dievaluasi
+   ulang (tanpa training), jadi recall per kelas untuk run lama bisa didapat
+   cepat dengan menjalankan ulang perintah yang sama.
 
 Output: outputs/ablation_report.json
         outputs/ablation_comparison.png
@@ -85,6 +90,12 @@ def _evaluate_checkpoint(ckpt, attention, log_fn):
     m = common.evaluate(model, loaders["test"], device, n_classes,
                         use_tta=EVAL_CONFIG.get("tta", False))
 
+    class_map = meta["class_map"]
+    recall_per_class = {
+        class_map[str(i)]: common.class_recall(m["y_true"], m["y_pred"], i)
+        for i in range(n_classes)
+    }
+
     total_params = sum(p.numel() for p in model.parameters())
     return {
         "accuracy":          m["acc"],
@@ -92,6 +103,7 @@ def _evaluate_checkpoint(ckpt, attention, log_fn):
         "f1_macro":          m["f1_macro"],
         "auc_macro":         m["auc_macro"],
         "params":            total_params,
+        "recall_per_class":  recall_per_class,
     }
 
 
@@ -269,6 +281,15 @@ def run(log_fn, attentions=None, seeds=None, epochs=None):
                 "std":  float(vals.std(ddof=1)) if len(vals) > 1 else 0.0,
                 "runs": [float(v) for v in vals],
             }
+        # Recall per kelas: mean +/- std antar seed (feedback dosen poin 4)
+        rpc = {}
+        for cls in runs[0].get("recall_per_class", {}):
+            vals = np.array([r["recall_per_class"][cls] for r in runs], dtype=float)
+            rpc[cls] = {"mean": float(vals.mean()),
+                        "std":  float(vals.std(ddof=1)) if len(vals) > 1 else 0.0,
+                        "min":  float(vals.min()), "max": float(vals.max()),
+                        "runs": [float(v) for v in vals]}
+        entry["recall_per_class"] = rpc
         summary[attn] = entry
 
     log_fn("")
@@ -289,6 +310,25 @@ def run(log_fn, attentions=None, seeds=None, epochs=None):
             f"{s['auc_macro']['mean']:>10.4f} +/-{s['auc_macro']['std']:>6.4f}"
         )
     log_fn("=" * 96)
+
+    # ---------- Recall per kelas antar seed ----------
+    classes = next((list(summary[a]["recall_per_class"]) for a in attentions
+                    if a in summary and summary[a].get("recall_per_class")), [])
+    if classes:
+        log_fn("")
+        log_fn("  RECALL PER KELAS (mean +/- std antar seed; [min-max])")
+        header = "".join(f"{a:>29}" for a in attentions if a in summary)
+        log_fn(f"  {'Kelas':<42}{header}")
+        for cls in classes:
+            cells = ""
+            for a in attentions:
+                if a not in summary:
+                    continue
+                r = summary[a]["recall_per_class"][cls]
+                cells += f"{r['mean']:>9.3f} +/-{r['std']:>5.3f} [{r['min']:.2f}-{r['max']:.2f}]"
+            flag = "  <- minoritas" if cls in ("melanoma", "dermatofibroma") else ""
+            log_fn(f"  {cls:<42}{cells}{flag}")
+        log_fn("=" * 96)
 
     # ---------- Uji signifikansi berpasangan ----------
     tests = {}

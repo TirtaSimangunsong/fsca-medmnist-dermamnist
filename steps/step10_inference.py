@@ -6,8 +6,10 @@ dan mendapatkan prediksi kelas + confidence score + Grad-CAM overlay.
 
 Konsistensi dengan step lain:
 - Device dipilih lewat common.resolve_device() (DEVICE_CONFIG "auto").
-- Grad-CAM dipasang pada `fsca4` (SESUDAH modul atensi), sama dengan
-  Step 8, sehingga heatmap memuat kontribusi FSCA.
+- Memakai MODEL UTAMA (config.MAIN_MODEL; default "baseline" sesuai feedback
+  dosen 26 Okt 2026).
+- Grad-CAM dipasang pada lapisan terakhir yang sama dengan Step 8:
+  `layer4` untuk baseline, `fsca4` (sesudah modul atensi) untuk FSCA.
 - Prediksi memakai satu forward pass (tanpa TTA / logit adjustment),
   sesuai kondisi pemakaian model pada satu citra.
 
@@ -19,16 +21,13 @@ import sys
 import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import PATHS, DATASET
+from config import PATHS, DATASET, main_model_spec
 
 OUTPUT_DIR    = PATHS["output_dir"]
 META_PATH     = PATHS["dataset_meta"]
 CONFIG_PATH   = PATHS["preprocess_config"]
-FINAL_MODEL   = PATHS["final_model"]
 RESULT_PATH   = PATHS["inference_result_chart"]
 
-# Lapisan target Grad-CAM (harus sama dengan hook utama di Step 8)
-GRADCAM_LAYER = "fsca4"
 
 
 def predict_image(image_path, log_fn):
@@ -51,7 +50,12 @@ def predict_image(image_path, log_fn):
     from step8_gradcam import GradCAM
     import common
 
-    for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"), (FINAL_MODEL, "Step 6")]:
+    from step8_gradcam import grid_layers_for
+
+    spec = main_model_spec()
+    gc_layer = grid_layers_for(spec["attention"])[-1]   # lapisan terakhir, sama dengan Step 8
+    for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"),
+                       (spec["model_path"], spec["made_by"])]:
         if not os.path.exists(path):
             log_fn(f"ERROR: {os.path.basename(path)} tidak ditemukan. Jalankan {name}.")
             return None
@@ -64,9 +68,11 @@ def predict_image(image_path, log_fn):
     mean, std = config["mean"], config["std"]
 
     device = common.resolve_device(log_fn=log_fn)
-    model  = build_model(n_classes=n_classes, pretrained=False).to(device)
-    model.load_state_dict(torch.load(FINAL_MODEL, map_location=device))
+    model  = build_model(n_classes=n_classes, pretrained=False,
+                         attention=spec["attention"]).to(device)
+    model.load_state_dict(torch.load(spec["model_path"], map_location=device))
     model.eval()
+    log_fn(f"Model utama : {spec['label']}")
 
     log_fn(f"Input citra: {os.path.basename(image_path)}")
 
@@ -104,12 +110,12 @@ def predict_image(image_path, log_fn):
     for rank, idx in enumerate(top3, 1):
         log_fn(f"  #{rank}  [{idx}] {class_map[str(idx)]:<40} : {probs[idx]*100:.2f}%")
 
-    # Grad-CAM pada fsca4 (sesudah modul atensi), sama dengan Step 8
-    grad_cam = GradCAM(model, target_layer=getattr(model, GRADCAM_LAYER))
+    # Grad-CAM pada lapisan terakhir model utama, sama dengan Step 8
+    grad_cam = GradCAM(model, target_layer=getattr(model, gc_layer))
     cam, _ = grad_cam.generate(img_tensor, target_class=int(pred))
     grad_cam.remove()
     if grad_cam.last_is_dead:
-        log_fn(f"PERINGATAN: CAM {GRADCAM_LAYER} kosong (tidak ada aktivasi positif).")
+        log_fn(f"PERINGATAN: CAM {gc_layer} kosong (tidak ada aktivasi positif).")
 
     # Visualisasi
     img_disp = np.array(pil_img.resize((img_size, img_size), Image.NEAREST)) / 255.0
@@ -130,7 +136,7 @@ def predict_image(image_path, log_fn):
     axes_c[0, 0].imshow(img_disp, interpolation="nearest")
     axes_c[0, 0].set_title(f"Input {img_size}×{img_size}", color="white", fontsize=9)
     axes_c[0, 1].imshow(heatmap, interpolation="nearest")
-    axes_c[0, 1].set_title(f"Grad-CAM ({GRADCAM_LAYER})", color="white", fontsize=9)
+    axes_c[0, 1].set_title(f"Grad-CAM ({gc_layer})", color="white", fontsize=9)
     axes_c[0, 2].imshow(overlay, interpolation="nearest")
     axes_c[0, 2].set_title(f"Overlay\n{pred_class} ({confidence:.1f}%)", color="white", fontsize=9)
 

@@ -288,6 +288,77 @@ def _sweep_tau(logits, y_true, n_classes, class_counts, grid, metric, log_fn):
 
 
 # =========================================================
+# BIAS SATU KELAS (mis. melanoma) — post-hoc, tanpa training ulang
+# =========================================================
+def class_bias_vector(n_classes, cls_idx, bias):
+    """
+    Vektor yang DIKURANGKAN dari logit (konvensi sama dengan logit_adjust)
+    sehingga logit kelas cls_idx NAIK sebesar `bias`.
+    """
+    v = np.zeros(n_classes, dtype=np.float32)
+    v[cls_idx] = -float(bias)
+    return v
+
+
+def class_recall(y_true, y_pred, cls_idx):
+    y_true, y_pred = np.asarray(y_true), np.asarray(y_pred)
+    mask = y_true == cls_idx
+    return float((y_pred[mask] == cls_idx).mean()) if mask.any() else float("nan")
+
+
+def class_precision(y_true, y_pred, cls_idx):
+    y_true, y_pred = np.asarray(y_true), np.asarray(y_pred)
+    mask = y_pred == cls_idx
+    return float((y_true[mask] == cls_idx).mean()) if mask.any() else float("nan")
+
+
+def tune_class_bias(logits, y_true, n_classes, cls_idx, grid,
+                    max_bal_acc_drop=0.0, max_acc_drop=2.0, log_fn=None,
+                    class_label="kelas"):
+    """
+    Pilih bias untuk SATU kelas di VALIDATION set (logit sudah termasuk
+    penyesuaian lain, mis. tau).
+
+    Aturan pilih: recall kelas tsb setinggi mungkin, DENGAN syarat
+      - balanced accuracy val tidak turun lebih dari max_bal_acc_drop poin, dan
+      - accuracy val tidak turun lebih dari max_acc_drop poin
+    dibanding bias = 0. Bila recall sama, bias terkecil yang dipilih.
+
+    Return: (best_bias: float, table: list[dict])
+    """
+    log_fn = log_fn or _noop
+    grid = sorted(set([0.0] + [float(b) for b in grid]))
+
+    base = compute_metrics(logits, y_true, n_classes)
+    base_bal, base_acc = base["balanced_acc"], base["acc"]
+
+    log_fn(f"Sapuan bias {class_label} di VALIDATION "
+           f"(syarat: bal acc turun <= {max_bal_acc_drop} poin, acc turun <= {max_acc_drop} poin)")
+    log_fn(f"  {'bias':>6} {'recall':>8} {'presisi':>8} {'acc':>8} {'bal_acc':>8} {'f1_macro':>9}  ok")
+
+    table, best_bias, best_recall = [], 0.0, -1.0
+    for b in grid:
+        adj = class_bias_vector(n_classes, cls_idx, b)
+        m = compute_metrics(logits - adj[None, :], y_true, n_classes)
+        rec = class_recall(m["y_true"], m["y_pred"], cls_idx)
+        prec = class_precision(m["y_true"], m["y_pred"], cls_idx)
+        ok = (m["balanced_acc"] >= base_bal - max_bal_acc_drop - 1e-9
+              and m["acc"] >= base_acc - max_acc_drop - 1e-9)
+        row = {"bias": b, "recall": round(rec, 4), "precision": round(prec, 4),
+               "acc": round(float(m["acc"]), 4),
+               "balanced_acc": round(float(m["balanced_acc"]), 4),
+               "f1_macro": round(float(m["f1_macro"]), 4), "eligible": bool(ok)}
+        table.append(row)
+        log_fn(f"  {b:>6.2f} {rec:>8.3f} {prec:>8.3f} {row['acc']:>8.2f} "
+               f"{row['balanced_acc']:>8.2f} {row['f1_macro']:>9.4f}  {'ya' if ok else '-'}")
+        if ok and rec > best_recall + 1e-9:
+            best_recall, best_bias = rec, b
+
+    log_fn(f"  -> bias {class_label} terpilih: {best_bias}")
+    return best_bias, table
+
+
+# =========================================================
 # VALIDASI PER EPOCH & PEMILIHAN CHECKPOINT
 # =========================================================
 # nama di config -> (kunci di dict metrik, True jika makin besar makin baik)

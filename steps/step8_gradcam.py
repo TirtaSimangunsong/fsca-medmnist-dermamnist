@@ -2,7 +2,9 @@
 Step 8 - Grad-CAM (Explainable AI) — VERSI PERBAIKAN
 ======================================================
 Menghasilkan heatmap Grad-CAM untuk setiap kelas DermaMNIST
-menggunakan model final dari Step 6/7.
+menggunakan MODEL UTAMA (config.MAIN_MODEL; default "baseline" sesuai
+feedback dosen 26 Okt 2026). Baseline -> CAM dari layer3/layer4;
+model dengan atensi -> fsca3/fsca4 + figure efek FSCA (layer4 vs fsca4).
 
 RINGKASAN PERBAIKAN dari versi sebelumnya
 ------------------------------------------
@@ -61,13 +63,12 @@ import json
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import PATHS, DATASET, ensure_dirs
+from config import PATHS, DATASET, ensure_dirs, main_model_spec
 
 OUTPUT_DIR   = PATHS["output_dir"]
 GRADCAM_DIR  = PATHS["gradcam_dir"]
 META_PATH    = PATHS["dataset_meta"]
 CONFIG_PATH  = PATHS["preprocess_config"]
-FINAL_MODEL  = PATHS["final_model"]
 GRID_PATH    = PATHS["gradcam_grid_chart"]
 
 EFFECT_PATH      = os.path.join(OUTPUT_DIR, "gradcam_fsca_effect.png")
@@ -78,7 +79,14 @@ DEAD_CAM_EPS = 1e-6
 
 # Lapisan yang divisualisasikan pada grid utama, berurutan dari resolusi
 # tinggi ke rendah. Nama harus cocok dengan atribut pada ResNet18_FSCA.
+# Model dengan atensi: sesudah modul atensi (fsca3/fsca4).
+# Baseline (attention="none"): slot fsca = Identity, jadi dipakai layer3/layer4.
 GRID_LAYERS = ["fsca3", "fsca4"]
+GRID_LAYERS_BASELINE = ["layer3", "layer4"]
+
+
+def grid_layers_for(attention):
+    return GRID_LAYERS_BASELINE if attention == "none" else GRID_LAYERS
 
 
 # =========================================================
@@ -263,8 +271,9 @@ def run(log_fn):
     from step4_model import build_model
     import common
 
+    spec = main_model_spec()
     for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"),
-                       (FINAL_MODEL, "Step 6")]:
+                       (spec["model_path"], spec["made_by"])]:
         if not os.path.exists(path):
             log_fn(f"ERROR: {os.path.basename(path)} tidak ditemukan. "
                    f"Jalankan {name} terlebih dahulu.")
@@ -280,11 +289,12 @@ def run(log_fn):
 
     device = common.resolve_device(log_fn=log_fn)
 
-    log_fn("Memuat model untuk Grad-CAM...")
-    model = build_model(n_classes=n_classes, pretrained=False).to(device)
-    model.load_state_dict(torch.load(FINAL_MODEL, map_location=device))
+    log_fn(f"Memuat model utama untuk Grad-CAM: {spec['label']}...")
+    model = build_model(n_classes=n_classes, pretrained=False,
+                        attention=spec["attention"]).to(device)
+    model.load_state_dict(torch.load(spec["model_path"], map_location=device))
     model.eval()
-    log_fn(f"Model: ResNet-18 + {model.attention_name.upper()}")
+    log_fn(f"Model: {spec['label']} ({os.path.basename(spec['model_path'])})")
 
     test_transform = transforms.Compose([
         transforms.ToTensor(),
@@ -301,7 +311,7 @@ def run(log_fn):
 
     # Siapkan objek GradCAM untuk tiap lapisan yang diminta
     cams = {}
-    for layer_name in GRID_LAYERS:
+    for layer_name in grid_layers_for(spec["attention"]):
         if not hasattr(model, layer_name):
             log_fn(f"PERINGATAN: model tidak punya atribut '{layer_name}', dilewati.")
             continue
@@ -317,7 +327,7 @@ def run(log_fn):
     fig, axes = plt.subplots(n_classes, n_cols,
                              figsize=(3.0 * n_cols, n_classes * 2.9))
     fig.patch.set_facecolor("#1a1a1a")
-    fig.suptitle("Grad-CAM — ResNet-18 + FSCA (DermaMNIST 28x28)\n"
+    fig.suptitle(f"Grad-CAM — {spec['label']} (DermaMNIST {img_size}x{img_size})\n"
                  "Sampel terpilih: prediksi benar dengan confidence tertinggi",
                  color="white", fontsize=13, fontweight="bold", y=1.005)
 
@@ -414,15 +424,22 @@ def run(log_fn):
     for gc in cams.values():
         gc.remove()
 
-    # ---- Figure pembanding: sebelum vs sesudah FSCA ----
-    _render_fsca_effect(model, test_ds, selected, class_map, n_classes,
-                        mean, std, img_size, device, colormap, log_fn)
+    # ---- Figure pembanding: sebelum vs sesudah FSCA (hanya model dengan atensi) ----
+    effect_path = None
+    if spec["attention"] != "none":
+        _render_fsca_effect(model, test_ds, selected, class_map, n_classes,
+                            mean, std, img_size, device, colormap, log_fn)
+        effect_path = EFFECT_PATH
+    else:
+        log_fn("Figure efek FSCA dilewati: model utama adalah baseline (tanpa modul atensi).")
 
+    diagnostics["_model"] = {"label": spec["label"], "attention": spec["attention"],
+                             "layers": list(cams.keys())}
     with open(DIAGNOSTICS_PATH, "w") as f:
         json.dump(diagnostics, f, indent=2)
     log_fn(f"Diagnostik tersimpan -> {DIAGNOSTICS_PATH}")
 
-    return {"chart_path": GRID_PATH, "effect_path": EFFECT_PATH,
+    return {"chart_path": GRID_PATH, "effect_path": effect_path,
             "gradcam_dir": GRADCAM_DIR, "diagnostics": diagnostics}
 
 

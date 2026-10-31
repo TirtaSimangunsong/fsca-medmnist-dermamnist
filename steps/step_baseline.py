@@ -1,8 +1,9 @@
 """
-Step 4 (GUI) - Baseline ResNet-18 (tanpa modul atensi)
-=========================================================
-Melatih ResNet-18 POLOS (attention="none") sebagai pembanding sebelum FSCA,
-lalu langsung mengevaluasinya di test set.
+Step 4 (GUI) - Baseline ResNet-18 (tanpa modul atensi) — MODEL UTAMA
+=====================================================================
+Melatih ResNet-18 POLOS (attention="none"), lalu langsung mengevaluasinya di
+test set. Sesuai feedback dosen 26 Okt 2026, model ini adalah MODEL UTAMA
+(config.MAIN_MODEL = "baseline"); ResNet-18 + FSCA (Step 5–6) menjadi pembanding.
 
 Agar perbandingan dengan FSCA adil, baseline memakai komponen yang SAMA:
 - Arsitektur  : step4_model.build_model(attention="none") -> stem 3x3 stride 1,
@@ -86,11 +87,8 @@ def run(log_fn, hp_override=None):
     log_fn("  EVALUASI TEST SET — ResNet-18 Baseline")
     log_fn("=" * 58)
     report = evaluate_checkpoint(MODEL_PATH, log_fn, attention=ATTENTION,
-                                 report_path=REPORT_PATH, cm_path=CM_PATH)
-    report["total_params"] = total_params
-    report["best_epoch"] = result["best_epoch"]
-    with open(REPORT_PATH, "w") as f:
-        json.dump(report, f, indent=2)
+                                 report_path=REPORT_PATH, cm_path=CM_PATH,
+                                 history_path=HISTORY_PATH, label="ResNet-18 Baseline")
 
     return {
         "best_epoch":   result["best_epoch"],
@@ -98,6 +96,7 @@ def run(log_fn, hp_override=None):
         "test_auc":     report["auc_macro"],
         "test_acc":     report["accuracy"],
         "test_bal_acc": report["balanced_accuracy"],
+        "test_melanoma_recall": report.get("melanoma_recall"),
         "total_params": total_params,
         "model_path":   MODEL_PATH,
         "curve_path":   CURVE_PATH,

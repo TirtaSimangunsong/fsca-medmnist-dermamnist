@@ -8,14 +8,15 @@ Urutan step:
    1. Ekstraksi            -> step1_extract.py
    2. Preprocessing        -> step2_preprocess.py
    3. Split Data           -> step3_split.py
-   4. Baseline ResNet-18   -> step_baseline.py   (train + evaluasi tanpa atensi)
+   4. Baseline ResNet-18   -> step_baseline.py   (MODEL UTAMA: train + evaluasi tanpa atensi)
    5. Model FSCA           -> step4_model.py
-   6. Training FSCA        -> step5_training.py  (langsung menghasilkan model final)
-   7. Evaluation           -> step7_evaluation.py
-   8. Grad-CAM             -> step8_gradcam.py
-   9. Summary              -> step9_summary.py
-  10. Inference            -> step10_inference.py
+   6. Training FSCA        -> step5_training.py  (model pembanding)
+   7. Evaluasi & Perbandingan -> step7_evaluation.py (evaluasi kedua model + tabel)
+   8. Grad-CAM             -> step8_gradcam.py   (model utama)
+   9. Summary              -> step9_summary.py   (model utama + perbandingan)
+  10. Inference            -> step10_inference.py (model utama)
 Fine-tuning (Fase 2) sudah dihapus dari pipeline.
+Model utama diatur oleh config.MAIN_MODEL (default "baseline", feedback dosen 26 Okt 2026).
 """
 
 import tkinter as tk
@@ -30,7 +31,7 @@ STEPS_DIR = os.path.join(BASE_DIR, "steps")
 sys.path.insert(0, STEPS_DIR)
 sys.path.insert(0, BASE_DIR)
 
-from config import PATHS
+from config import PATHS, main_model_spec
 
 try:
     from PIL import Image, ImageTk
@@ -100,7 +101,6 @@ class CancerSkinCADApp:
         self.root.configure(bg="#2d2d2d")
 
         # State
-        self.model_ready   = False   # True setelah Step 6 (training) & Step 7 (evaluasi)
         self.nav_tabs      = {}
         self.current_step  = ""
         self.chart_images  = {}   # { step_name: path }
@@ -127,7 +127,7 @@ class CancerSkinCADApp:
         steps = [
             "Step 1: Ekstraksi",          "Step 2: Preprocessing", "Step 3: Split Data",
             "Step 4: Baseline ResNet-18", "Step 5: Model FSCA",    "Step 6: Training FSCA",
-            "Step 7: Evaluation",         "Step 8: Grad-CAM",      "Step 9: Summary",
+            "Step 7: Evaluasi & Perbandingan", "Step 8: Grad-CAM", "Step 9: Summary",
             "Step 10: Inference",
         ]
         for col in range(len(steps)):
@@ -161,7 +161,7 @@ class CancerSkinCADApp:
             bg="#2d2d2d", fg="#aaaaaa", font=("Arial", 9)
         )
         self.model_status_label = tk.Label(
-            self.model_lf, text="(Tidak ada model. Jalankan Step 6 & 7 dulu)",
+            self.model_lf, text="(Tidak ada model utama. Jalankan Step 4 dulu)",
             bg="#222222", fg="#ff6b6b", anchor="w", padx=10, pady=6, font=("Arial", 9, "italic")
         )
         self.model_status_label.pack(fill="x", padx=5, pady=4)
@@ -265,11 +265,12 @@ class CancerSkinCADApp:
         if "Step 8" in target_step:
             self.model_lf.pack(fill="x", before=self.results_lf, pady=4)
             self.files_lf.pack(fill="x", before=self.results_lf, pady=4)
-            if self.model_ready:
-                final_path = PATHS["final_model"]
-                size_mb = os.path.getsize(final_path) / 1e6 if os.path.exists(final_path) else 0
+            spec = main_model_spec()
+            if os.path.exists(spec["model_path"]):
+                size_mb = os.path.getsize(spec["model_path"]) / 1e6
                 self.model_status_label.config(
-                    text=f"Model ditemukan: ResNet18_FSCA_DermaMNIST_Best.pth  ({size_mb:.1f} MB)",
+                    text=f"Model utama: {spec['label']} — "
+                         f"{os.path.basename(spec['model_path'])}  ({size_mb:.1f} MB)",
                     fg="#2ecc71"
                 )
                 self.files_status_label.config(
@@ -278,7 +279,7 @@ class CancerSkinCADApp:
                 )
             else:
                 self.model_status_label.config(
-                    text="(Tidak ada model. Jalankan Step 6: Training FSCA dan Step 7: Evaluation terlebih dahulu.)",
+                    text=f"(Model utama {spec['label']} belum ada. Jalankan {spec['made_by']} terlebih dahulu.)",
                     fg="#ff6b6b"
                 )
                 self.files_status_label.config(text="(Menunggu...)", fg="#aaaaaa")
@@ -307,11 +308,12 @@ class CancerSkinCADApp:
     def run_current_step(self):
         step = self.current_step
 
-        if "Step 8" in step and not self.model_ready:
+        spec = main_model_spec()
+        if "Step 8" in step and not os.path.exists(spec["model_path"]):
             messagebox.showwarning(
                 "Akses Ditolak",
-                "Model .pth belum tersedia!\n"
-                "Jalankan Step 6: Training FSCA dan Step 7: Evaluation terlebih dahulu."
+                f"Model utama ({spec['label']}) belum tersedia!\n"
+                f"Jalankan {spec['made_by']} terlebih dahulu."
             )
             self.write_terminal("Error: Eksekusi Grad-CAM dibatalkan — model belum ada.")
             return
@@ -341,12 +343,7 @@ class CancerSkinCADApp:
             elif step == "Step 4: Baseline ResNet-18": import step_baseline    as m; result = m.run(self.write_terminal)
             elif step == "Step 5: Model FSCA":         import step4_model      as m; result = m.run(self.write_terminal)
             elif step == "Step 6: Training FSCA":      import step5_training   as m; result = m.run(self.write_terminal)
-            elif step == "Step 7: Evaluation":
-                import step7_evaluation as m
-                result = m.run(self.write_terminal)
-                final = PATHS["final_model"]
-                if os.path.exists(final):
-                    self.model_ready = True
+            elif step == "Step 7: Evaluasi & Perbandingan": import step7_evaluation as m; result = m.run(self.write_terminal)
             elif step == "Step 8: Grad-CAM":      import step8_gradcam    as m; result = m.run(self.write_terminal)
             elif step == "Step 9: Summary":       import step9_summary    as m; result = m.run(self.write_terminal)
             elif step == "Step 10: Inference":    import step10_inference as m; result = m.run(self.write_terminal)

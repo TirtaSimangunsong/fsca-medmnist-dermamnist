@@ -35,7 +35,7 @@ import json
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import PATHS, EVAL_CONFIG, IMBALANCE, ensure_dirs
+from config import PATHS, EVAL_CONFIG, IMBALANCE, MODEL_CONFIG, ensure_dirs
 
 OUTPUT_DIR  = PATHS["output_dir"]
 META_PATH   = PATHS["dataset_meta"]
@@ -81,26 +81,119 @@ def _plot_confusion(cm, class_names, acc, bal, auc, path):
 
 
 def run(log_fn):
-    """Entry point GUI (Step 7): evaluasi model final ResNet-18 + FSCA."""
-    model_path = FINAL_MODEL if os.path.exists(FINAL_MODEL) else CKPT_PATH
-    for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2"),
-                       (model_path, "Step 6: Training FSCA")]:
+    """
+    Entry point GUI (Step 7: Evaluasi & Perbandingan).
+    Mengevaluasi ulang KEDUA model dengan protokol yang sama (hanya evaluasi,
+    tanpa training):
+      - ResNet-18 Baseline (Step 4) -> baseline_evaluation_report.json
+      - ResNet-18 + FSCA   (Step 6) -> evaluation_report.json
+    lalu membuat tabel perbandingan -> comparison_report.json.
+    Model yang belum dilatih dilewati dengan peringatan.
+    """
+    for path, name in [(META_PATH, "Step 1"), (CONFIG_PATH, "Step 2")]:
         if not os.path.exists(path):
             log_fn(f"ERROR: {os.path.basename(path)} tidak ditemukan. Jalankan {name} dulu.")
             raise FileNotFoundError(path)
 
-    evaluate_checkpoint(model_path, log_fn)
+    fsca_path = FINAL_MODEL if os.path.exists(FINAL_MODEL) else CKPT_PATH
+    attn = MODEL_CONFIG["attention"]
+    candidates = [
+        ("baseline", "ResNet-18 Baseline", PATHS["baseline_model"], "none",
+         PATHS["baseline_report"], PATHS["baseline_cm_chart"], PATHS["baseline_history"],
+         "Step 4: Baseline ResNet-18"),
+        ("fsca", f"ResNet-18 + {attn.upper()}", fsca_path, attn,
+         REPORT_PATH, CM_PATH, PATHS["training_history"], "Step 6: Training FSCA"),
+    ]
+
+    reports = {}
+    for key, label, path, attention, rep_path, cm_path, hist_path, made_by in candidates:
+        if not os.path.exists(path):
+            log_fn(f"PERINGATAN: model {label} belum ada ({os.path.basename(path)}). "
+                   f"Jalankan {made_by} dulu. Dilewati.")
+            continue
+        log_fn("\n" + "#" * 58)
+        log_fn(f"  EVALUASI {label.upper()}")
+        log_fn("#" * 58)
+        reports[key] = evaluate_checkpoint(path, log_fn, attention=attention,
+                                           report_path=rep_path, cm_path=cm_path,
+                                           history_path=hist_path, label=label)
+
+    if not reports:
+        raise FileNotFoundError("Belum ada model. Jalankan Step 4 dan/atau Step 6 dulu.")
+    if len(reports) == 2:
+        compare_reports(reports["baseline"], reports["fsca"], log_fn)
+
+    return {"evaluated": list(reports)}   # tanpa chart_path -> GUI menampilkan log
+
+
+def _share(y_true, y_pred, true_idx, pred_idx):
+    """Porsi sampel kelas true_idx yang diprediksi sebagai pred_idx (0..1)."""
+    y_true, y_pred = np.asarray(y_true), np.asarray(y_pred)
+    mask = y_true == true_idx
+    return float((y_pred[mask] == pred_idx).mean()) if mask.any() else float("nan")
+
+
+def compare_reports(base, other, log_fn):
+    """
+    Tabel perbandingan baseline vs model lain (FSCA) dari dua laporan
+    evaluate_checkpoint(). Disimpan ke PATHS["comparison_report"].
+    CATATAN: ini 1 seed (TRAIN_HP["seed"]); kesimpulan akhir tetap dari Step 11.
+    """
+    rows = [("Accuracy (%)", "accuracy", 2), ("Balanced Acc (%)", "balanced_accuracy", 2),
+            ("F1 Macro", "f1_macro", 4), ("AUC Macro", "auc_macro", 4),
+            ("Recall melanoma", "melanoma_recall", 3)]
+    b_name = base.get("label", "Baseline")
+    o_name = other.get("label", "FSCA")
+
+    log_fn("\n" + "=" * 72)
+    log_fn("  PERBANDINGAN (test set, protokol evaluasi identik, 1 seed)")
+    log_fn("=" * 72)
+    log_fn(f"  {'Metrik':<22} {b_name:>20} {o_name:>20} {'Selisih':>8}")
+    table = []
+    for title, key, nd in rows:
+        bv, ov = base.get(key), other.get(key)
+        if bv is None or ov is None:
+            continue
+        table.append({"metric": title, "baseline": bv, "other": ov, "diff": round(ov - bv, 4)})
+        log_fn(f"  {title:<22} {bv:>20.{nd}f} {ov:>20.{nd}f} {ov - bv:>+8.{nd}f}")
+    for title, key in [("Parameter", "total_params"), ("Epoch checkpoint", "best_epoch")]:
+        bv, ov = base.get(key), other.get(key)
+        if bv is not None and ov is not None:
+            table.append({"metric": title, "baseline": bv, "other": ov, "diff": ov - bv})
+            log_fn(f"  {title:<22} {bv:>20,} {ov:>20,} {ov - bv:>+8,}")
+
+    log_fn("\n  Recall per kelas:")
+    per_class = []
+    for cls in base["class_names"]:
+        bv = base["per_class"].get(cls, {}).get("recall")
+        ov = other["per_class"].get(cls, {}).get("recall")
+        if bv is None or ov is None:
+            continue
+        per_class.append({"class": cls, "baseline": bv, "other": ov, "diff": round(ov - bv, 4)})
+        log_fn(f"  {cls:<42} {bv:>7.3f} {ov:>7.3f} {ov - bv:>+8.3f}")
+    log_fn("=" * 72)
+    log_fn("  Catatan: 1 seed. Untuk kesimpulan (mean +/- std 5 seed) jalankan Step 11.")
+
+    comparison = {"baseline": b_name, "other": o_name, "metrics": table,
+                  "recall_per_class": per_class,
+                  "note": "1 seed (TRAIN_HP['seed']); kesimpulan akhir dari Step 11"}
+    with open(PATHS["comparison_report"], "w") as f:
+        json.dump(comparison, f, indent=2)
+    log_fn(f"Tabel perbandingan tersimpan -> {PATHS['comparison_report']}")
+    return comparison
 
 
 def evaluate_checkpoint(model_path, log_fn, attention=None,
-                        report_path=REPORT_PATH, cm_path=CM_PATH):
+                        report_path=REPORT_PATH, cm_path=CM_PATH,
+                        history_path=None, label=None):
     """
     Evaluasi satu checkpoint di test set dengan protokol yang sama
-    (EVAL_CONFIG + IMBALANCE). Dipakai Step 7 (FSCA) dan step_baseline.py
-    (ResNet-18 tanpa atensi) agar angka keduanya bisa dibandingkan langsung.
+    (EVAL_CONFIG + IMBALANCE). Dipakai Step 7 (kedua model) dan
+    step_baseline.py agar angka baseline dan FSCA bisa dibandingkan langsung.
 
-    attention : None -> MODEL_CONFIG["attention"]; "none" untuk baseline.
-    Return    : dict laporan evaluasi (juga disimpan ke report_path).
+    attention    : None -> MODEL_CONFIG["attention"]; "none" untuk baseline.
+    history_path : history training model ini (untuk mencatat epoch checkpoint).
+    Return       : dict laporan evaluasi (juga disimpan ke report_path).
     """
     import torch
     from sklearn.metrics import classification_report, confusion_matrix
@@ -156,8 +249,47 @@ def evaluate_checkpoint(model_path, log_fn, attention=None,
 
     adj = common.make_logit_adjustment(class_counts, tau) if tau else None
 
+    # ---------- Bias melanoma: dituning di VALIDATION (feedback dosen poin 1) ----------
+    mel_cfg  = IMBALANCE.get("melanoma_bias", {})
+    mel_name = mel_cfg.get("class_name", "melanoma")
+    mel_idx  = class_names.index(mel_name) if mel_name in class_names else None
+    nevi_idx = class_names.index("melanocytic nevi") if "melanocytic nevi" in class_names else None
+    mel_info = {"enabled": False}
+    if mel_cfg.get("enabled", False) and mel_idx is not None:
+        log_fn("")
+        val_logits, val_y = common.collect_logits(model, val_loader, device, use_tta=use_tta)
+        if adj is not None:
+            val_logits = val_logits - adj[None, :]
+        bias, bias_table = common.tune_class_bias(
+            val_logits, val_y, n_classes, mel_idx, mel_cfg.get("grid", [0.0]),
+            max_bal_acc_drop=mel_cfg.get("max_bal_acc_drop", 0.0),
+            max_acc_drop=mel_cfg.get("max_acc_drop", 2.0),
+            log_fn=log_fn, class_label=mel_name,
+        )
+        m0 = common.evaluate(model, test_loader, device, n_classes,
+                             use_tta=use_tta, logit_adjust=adj)
+        mel_info = {
+            "enabled": True, "class_name": mel_name, "bias": bias,
+            "rule": {k: mel_cfg.get(k) for k in ("max_bal_acc_drop", "max_acc_drop")},
+            "val_sweep": bias_table,
+            "test_without_bias": {
+                "accuracy":          round(m0["acc"], 4),
+                "balanced_accuracy": round(m0["balanced_acc"], 4),
+                "f1_macro":          round(m0["f1_macro"], 4),
+                "auc_macro":         round(m0["auc_macro"], 4),
+                "recall":    round(common.class_recall(m0["y_true"], m0["y_pred"], mel_idx), 4),
+                "precision": round(common.class_precision(m0["y_true"], m0["y_pred"], mel_idx), 4),
+                "as_nevi":   round(_share(m0["y_true"], m0["y_pred"], mel_idx, nevi_idx), 4)
+                             if nevi_idx is not None else None,
+            },
+        }
+        if bias:
+            bvec = common.class_bias_vector(n_classes, mel_idx, bias)
+            adj = bvec if adj is None else adj + bvec
+
     # ---------- Evaluasi final ----------
-    log_fn(f"\nEvaluasi final (TTA={use_tta}, tau={tau})...")
+    log_fn(f"\nEvaluasi final (TTA={use_tta}, tau={tau}, "
+           f"bias {mel_name}={mel_info.get('bias', 0.0)})...")
     m = common.evaluate(model, test_loader, device, n_classes,
                         use_tta=use_tta, logit_adjust=adj)
 
@@ -173,9 +305,28 @@ def evaluate_checkpoint(model_path, log_fn, attention=None,
     log_fn(f"  F1 Macro             : {f1_macro:.4f}")
     log_fn(f"  AUC Macro (OvR)      : {auc:.4f}")
     log_fn("=" * 58)
-    log_fn(f"  Kontribusi TTA + logit adj : {acc - m_plain['acc']:+.2f} poin akurasi, "
+    log_fn(f"  Kontribusi TTA + adj + bias: {acc - m_plain['acc']:+.2f} poin akurasi, "
            f"{bal - m_plain['balanced_acc']:+.2f} poin balanced")
     log_fn("=" * 58)
+
+    mel_recall = (common.class_recall(y_true, y_pred, mel_idx)
+                  if mel_idx is not None else None)
+    if mel_info["enabled"]:
+        before = mel_info["test_without_bias"]
+        mel_info["test_with_bias"] = {
+            "recall":    round(mel_recall, 4),
+            "precision": round(common.class_precision(y_true, y_pred, mel_idx), 4),
+            "as_nevi":   round(_share(y_true, y_pred, mel_idx, nevi_idx), 4)
+                         if nevi_idx is not None else None,
+        }
+        after = mel_info["test_with_bias"]
+        log_fn(f"  Recall {mel_name} (test)     : {before['recall']:.3f} -> {after['recall']:.3f} "
+               f"(bias {mel_info['bias']})")
+        log_fn(f"  Presisi {mel_name} (test)    : {before['precision']:.3f} -> {after['precision']:.3f}")
+        if before.get("as_nevi") is not None:
+            log_fn(f"  {mel_name} ditebak nevi      : {100 * before['as_nevi']:.1f}% -> "
+                   f"{100 * after['as_nevi']:.1f}%")
+        log_fn("=" * 58)
 
     report = classification_report(y_true, y_pred, target_names=class_names,
                                    output_dict=True, zero_division=0)
@@ -191,13 +342,23 @@ def evaluate_checkpoint(model_path, log_fn, attention=None,
     _plot_confusion(cm, class_names, acc, bal, auc, cm_path)
     log_fn(f"Confusion matrix tersimpan -> {cm_path}")
 
+    best_epoch = None
+    if history_path and os.path.exists(history_path):
+        with open(history_path) as f:
+            best_epoch = json.load(f).get("best_epoch")
+
     eval_result = {
+        "label":          label or f"ResNet-18 + {model.attention_name.upper()}",
         "model_path":     model_path,
         "attention":      model.attention_name,
+        "total_params":   sum(p.numel() for p in model.parameters()),
+        "best_epoch":     best_epoch,
         "device":         str(device),
         "tta":            use_tta,
         "logit_adjustment_tau": tau,
         "tau_sweep_val":  tau_table,
+        "melanoma_bias":  mel_info,
+        "melanoma_recall": round(mel_recall, 4) if mel_recall is not None else None,
         "accuracy":       round(acc, 4),
         "balanced_accuracy": round(bal, 4),
         "f1_weighted":    round(f1_w, 4),
@@ -221,6 +382,4 @@ def evaluate_checkpoint(model_path, log_fn, attention=None,
     with open(report_path, "w") as f:
         json.dump(eval_result, f, indent=2)
     log_fn(f"Evaluation report tersimpan -> {report_path}")
-    return eval_result
-
     return eval_result
