@@ -1,15 +1,134 @@
 {
+  "label": "ResNet-18 Baseline",
   "model_path": "/Users/tirtasimangunsong/Documents/GitHub/thesis-fsca-medmnist/outputs/ResNet18_Baseline_DermaMNIST_Best.pth",
   "attention": "none",
+  "total_params": 11172423,
+  "best_epoch": 26,
   "device": "mps",
   "tta": false,
   "logit_adjustment_tau": 0.0,
   "tau_sweep_val": [],
-  "accuracy": 75.5112,
-  "balanced_accuracy": 63.5367,
-  "f1_weighted": 0.7576,
-  "f1_macro": 0.576,
-  "auc_macro": 0.9341,
+  "melanoma_bias": {
+    "enabled": true,
+    "class_name": "melanoma",
+    "bias": 0.5,
+    "rule": {
+      "max_bal_acc_drop": 0.0,
+      "max_acc_drop": 2.0
+    },
+    "val_sweep": [
+      {
+        "bias": 0.0,
+        "recall": 0.5045,
+        "precision": 0.5234,
+        "acc": 76.3709,
+        "balanced_acc": 60.0351,
+        "f1_macro": 0.583,
+        "eligible": true
+      },
+      {
+        "bias": 0.25,
+        "recall": 0.5495,
+        "precision": 0.5083,
+        "acc": 76.2712,
+        "balanced_acc": 60.5508,
+        "f1_macro": 0.5865,
+        "eligible": true
+      },
+      {
+        "bias": 0.5,
+        "recall": 0.6036,
+        "precision": 0.4558,
+        "acc": 75.5733,
+        "balanced_acc": 60.4175,
+        "f1_macro": 0.5835,
+        "eligible": true
+      },
+      {
+        "bias": 0.75,
+        "recall": 0.6396,
+        "precision": 0.4104,
+        "acc": 74.1775,
+        "balanced_acc": 59.8976,
+        "f1_macro": 0.5744,
+        "eligible": false
+      },
+      {
+        "bias": 1.0,
+        "recall": 0.6757,
+        "precision": 0.375,
+        "acc": 72.682,
+        "balanced_acc": 59.5373,
+        "f1_macro": 0.5663,
+        "eligible": false
+      },
+      {
+        "bias": 1.25,
+        "recall": 0.7207,
+        "precision": 0.3361,
+        "acc": 70.5882,
+        "balanced_acc": 58.3697,
+        "f1_macro": 0.553,
+        "eligible": false
+      },
+      {
+        "bias": 1.5,
+        "recall": 0.7477,
+        "precision": 0.3074,
+        "acc": 68.7936,
+        "balanced_acc": 56.0991,
+        "f1_macro": 0.5314,
+        "eligible": false
+      },
+      {
+        "bias": 2.0,
+        "recall": 0.8198,
+        "precision": 0.28,
+        "acc": 65.7029,
+        "balanced_acc": 55.2849,
+        "f1_macro": 0.5176,
+        "eligible": false
+      },
+      {
+        "bias": 2.5,
+        "recall": 0.9099,
+        "precision": 0.2617,
+        "acc": 63.2104,
+        "balanced_acc": 54.7274,
+        "f1_macro": 0.5108,
+        "eligible": false
+      },
+      {
+        "bias": 3.0,
+        "recall": 0.9459,
+        "precision": 0.2506,
+        "acc": 61.8146,
+        "balanced_acc": 54.1216,
+        "f1_macro": 0.5082,
+        "eligible": false
+      }
+    ],
+    "test_without_bias": {
+      "accuracy": 75.5112,
+      "balanced_accuracy": 63.5367,
+      "f1_macro": 0.576,
+      "auc_macro": 0.9341,
+      "recall": 0.4215,
+      "precision": 0.5251,
+      "as_nevi": 0.3498
+    },
+    "test_with_bias": {
+      "recall": 0.5247,
+      "precision": 0.4224,
+      "as_nevi": 0.2825
+    }
+  },
+  "melanoma_recall": 0.5247,
+  "accuracy": 73.9152,
+  "balanced_accuracy": 63.1707,
+  "f1_weighted": 0.7484,
+  "f1_macro": 0.5719,
+  "auc_macro": 0.9342,
   "without_tta_or_adjustment": {
     "accuracy": 75.5112,
     "balanced_accuracy": 63.5367,
@@ -18,57 +137,57 @@
   },
   "confusion_matrix": [
     [
-      38,
+      35,
       15,
-      6,
-      1,
-      2,
       4,
+      1,
+      9,
+      2,
       0
     ],
     [
       18,
-      69,
+      67,
       6,
       0,
+      6,
       3,
-      3,
-      4
+      3
     ],
     [
-      35,
-      17,
-      97,
+      32,
+      15,
+      90,
       1,
-      26,
-      44,
+      41,
+      41,
       0
     ],
     [
       3,
-      4,
+      3,
       0,
       13,
-      0,
       2,
+      1,
       1
     ],
     [
-      13,
-      7,
-      26,
+      12,
+      6,
+      21,
       2,
-      94,
-      78,
-      3
+      117,
+      63,
+      2
     ],
     [
       15,
       26,
-      46,
+      42,
       5,
-      54,
-      1177,
+      101,
+      1134,
       18
     ],
     [
@@ -76,8 +195,8 @@
       2,
       0,
       0,
-      0,
       1,
+      0,
       26
     ]
   ],
@@ -101,21 +220,21 @@
   ],
   "per_class": {
     "actinic keratoses and intraepithelial carcinoma": {
-      "precision": 0.3115,
-      "recall": 0.5758,
-      "f1-score": 0.4043,
+      "precision": 0.3043,
+      "recall": 0.5303,
+      "f1-score": 0.3867,
       "support": 66.0
     },
     "basal cell carcinoma": {
-      "precision": 0.4929,
-      "recall": 0.6699,
-      "f1-score": 0.5679,
+      "precision": 0.5,
+      "recall": 0.6505,
+      "f1-score": 0.5654,
       "support": 103.0
     },
     "benign keratosis-like lesions": {
-      "precision": 0.5359,
-      "recall": 0.4409,
-      "f1-score": 0.4838,
+      "precision": 0.5521,
+      "recall": 0.4091,
+      "f1-score": 0.47,
       "support": 220.0
     },
     "dermatofibroma": {
@@ -125,37 +244,35 @@
       "support": 23.0
     },
     "melanoma": {
-      "precision": 0.5251,
-      "recall": 0.4215,
-      "f1-score": 0.4677,
+      "precision": 0.4224,
+      "recall": 0.5247,
+      "f1-score": 0.468,
       "support": 223.0
     },
     "melanocytic nevi": {
-      "precision": 0.8992,
-      "recall": 0.8777,
-      "f1-score": 0.8883,
+      "precision": 0.9116,
+      "recall": 0.8456,
+      "f1-score": 0.8774,
       "support": 1341.0
     },
     "vascular lesions": {
-      "precision": 0.5,
+      "precision": 0.52,
       "recall": 0.8966,
-      "f1-score": 0.642,
+      "f1-score": 0.6582,
       "support": 29.0
     },
     "macro avg": {
-      "precision": 0.5508,
-      "recall": 0.6354,
-      "f1-score": 0.576,
+      "precision": 0.5431,
+      "recall": 0.6317,
+      "f1-score": 0.5719,
       "support": 2005.0
     },
     "weighted avg": {
-      "precision": 0.7682,
-      "recall": 0.7551,
-      "f1-score": 0.7576,
+      "precision": 0.7673,
+      "recall": 0.7392,
+      "f1-score": 0.7484,
       "support": 2005.0
     }
   },
-  "chart_path": "/Users/tirtasimangunsong/Documents/GitHub/thesis-fsca-medmnist/outputs/baseline_confusion_matrix.png",
-  "total_params": 11172423,
-  "best_epoch": 26
+  "chart_path": "/Users/tirtasimangunsong/Documents/GitHub/thesis-fsca-medmnist/outputs/baseline_confusion_matrix.png"
 }

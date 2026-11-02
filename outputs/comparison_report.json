@@ -1,0 +1,93 @@
+{
+  "baseline": "ResNet-18 Baseline",
+  "other": "ResNet-18 + FSCA",
+  "metrics": [
+    {
+      "metric": "Accuracy (%)",
+      "baseline": 73.9152,
+      "other": 73.1172,
+      "diff": -0.798
+    },
+    {
+      "metric": "Balanced Acc (%)",
+      "baseline": 63.1707,
+      "other": 61.3271,
+      "diff": -1.8436
+    },
+    {
+      "metric": "F1 Macro",
+      "baseline": 0.5719,
+      "other": 0.5796,
+      "diff": 0.0077
+    },
+    {
+      "metric": "AUC Macro",
+      "baseline": 0.9342,
+      "other": 0.9352,
+      "diff": 0.001
+    },
+    {
+      "metric": "Recall melanoma",
+      "baseline": 0.5247,
+      "other": 0.6637,
+      "diff": 0.139
+    },
+    {
+      "metric": "Parameter",
+      "baseline": 11172423,
+      "other": 11914575,
+      "diff": 742152
+    },
+    {
+      "metric": "Epoch checkpoint",
+      "baseline": 26,
+      "other": 31,
+      "diff": 5
+    }
+  ],
+  "recall_per_class": [
+    {
+      "class": "actinic keratoses and intraepithelial carcinoma",
+      "baseline": 0.5303,
+      "other": 0.5606,
+      "diff": 0.0303
+    },
+    {
+      "class": "basal cell carcinoma",
+      "baseline": 0.6505,
+      "other": 0.5146,
+      "diff": -0.1359
+    },
+    {
+      "class": "benign keratosis-like lesions",
+      "baseline": 0.4091,
+      "other": 0.4182,
+      "diff": 0.0091
+    },
+    {
+      "class": "dermatofibroma",
+      "baseline": 0.5652,
+      "other": 0.5217,
+      "diff": -0.0435
+    },
+    {
+      "class": "melanoma",
+      "baseline": 0.5247,
+      "other": 0.6637,
+      "diff": 0.139
+    },
+    {
+      "class": "melanocytic nevi",
+      "baseline": 0.8456,
+      "other": 0.821,
+      "diff": -0.0246
+    },
+    {
+      "class": "vascular lesions",
+      "baseline": 0.8966,
+      "other": 0.7931,
+      "diff": -0.1035
+    }
+  ],
+  "note": "1 seed (TRAIN_HP['seed']); kesimpulan akhir dari Step 11"
+}

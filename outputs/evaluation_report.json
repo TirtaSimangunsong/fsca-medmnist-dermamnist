@@ -1,15 +1,134 @@
 {
+  "label": "ResNet-18 + FSCA",
   "model_path": "/Users/tirtasimangunsong/Documents/GitHub/thesis-fsca-medmnist/outputs/ResNet18_FSCA_DermaMNIST_Best.pth",
   "attention": "fsca",
+  "total_params": 11914575,
+  "best_epoch": 31,
   "device": "mps",
   "tta": false,
   "logit_adjustment_tau": 0.0,
   "tau_sweep_val": [],
-  "accuracy": 75.5112,
-  "balanced_accuracy": 61.6648,
-  "f1_weighted": 0.7607,
-  "f1_macro": 0.5827,
-  "auc_macro": 0.9353,
+  "melanoma_bias": {
+    "enabled": true,
+    "class_name": "melanoma",
+    "bias": 0.5,
+    "rule": {
+      "max_bal_acc_drop": 0.0,
+      "max_acc_drop": 2.0
+    },
+    "val_sweep": [
+      {
+        "bias": 0.0,
+        "recall": 0.5045,
+        "precision": 0.448,
+        "acc": 76.2712,
+        "balanced_acc": 60.3282,
+        "f1_macro": 0.5971,
+        "eligible": true
+      },
+      {
+        "bias": 0.25,
+        "recall": 0.6126,
+        "precision": 0.4359,
+        "acc": 75.673,
+        "balanced_acc": 60.752,
+        "f1_macro": 0.5976,
+        "eligible": true
+      },
+      {
+        "bias": 0.5,
+        "recall": 0.7117,
+        "precision": 0.4115,
+        "acc": 74.9751,
+        "balanced_acc": 61.3502,
+        "f1_macro": 0.6052,
+        "eligible": true
+      },
+      {
+        "bias": 0.75,
+        "recall": 0.7838,
+        "precision": 0.3799,
+        "acc": 73.679,
+        "balanced_acc": 61.3535,
+        "f1_macro": 0.6011,
+        "eligible": false
+      },
+      {
+        "bias": 1.0,
+        "recall": 0.7838,
+        "precision": 0.3258,
+        "acc": 70.6879,
+        "balanced_acc": 59.9775,
+        "f1_macro": 0.5877,
+        "eligible": false
+      },
+      {
+        "bias": 1.25,
+        "recall": 0.8378,
+        "precision": 0.311,
+        "acc": 68.8933,
+        "balanced_acc": 59.5147,
+        "f1_macro": 0.5809,
+        "eligible": false
+      },
+      {
+        "bias": 1.5,
+        "recall": 0.8649,
+        "precision": 0.2832,
+        "acc": 66.002,
+        "balanced_acc": 57.9888,
+        "f1_macro": 0.5644,
+        "eligible": false
+      },
+      {
+        "bias": 2.0,
+        "recall": 0.9099,
+        "precision": 0.2488,
+        "acc": 61.6152,
+        "balanced_acc": 54.1835,
+        "f1_macro": 0.5307,
+        "eligible": false
+      },
+      {
+        "bias": 2.5,
+        "recall": 0.9279,
+        "precision": 0.2304,
+        "acc": 59.322,
+        "balanced_acc": 51.6897,
+        "f1_macro": 0.5097,
+        "eligible": false
+      },
+      {
+        "bias": 3.0,
+        "recall": 0.973,
+        "precision": 0.2177,
+        "acc": 56.4307,
+        "balanced_acc": 48.0309,
+        "f1_macro": 0.469,
+        "eligible": false
+      }
+    ],
+    "test_without_bias": {
+      "accuracy": 75.5112,
+      "balanced_accuracy": 61.6648,
+      "f1_macro": 0.5827,
+      "auc_macro": 0.9353,
+      "recall": 0.5112,
+      "precision": 0.4506,
+      "as_nevi": 0.287
+    },
+    "test_with_bias": {
+      "recall": 0.6637,
+      "precision": 0.3682,
+      "as_nevi": 0.2018
+    }
+  },
+  "melanoma_recall": 0.6637,
+  "accuracy": 73.1172,
+  "balanced_accuracy": 61.3271,
+  "f1_weighted": 0.7458,
+  "f1_macro": 0.5796,
+  "auc_macro": 0.9352,
   "without_tta_or_adjustment": {
     "accuracy": 75.5112,
     "balanced_accuracy": 61.6648,
@@ -18,30 +137,30 @@
   },
   "confusion_matrix": [
     [
-      40,
-      12,
-      5,
+      37,
+      11,
+      3,
       0,
-      7,
+      13,
       2,
       0
     ],
     [
-      21,
+      19,
       53,
-      7,
-      7,
       5,
       7,
-      3
+      11,
+      6,
+      2
     ],
     [
-      26,
+      22,
       10,
-      102,
+      92,
       4,
-      34,
-      44,
+      56,
+      36,
       0
     ],
     [
@@ -54,21 +173,21 @@
       0
     ],
     [
-      15,
-      5,
-      23,
+      9,
+      3,
+      16,
       1,
-      114,
-      64,
+      148,
+      45,
       1
     ],
     [
-      13,
+      7,
       10,
-      50,
+      44,
       5,
-      89,
-      1169,
+      169,
+      1101,
       5
     ],
     [
@@ -76,9 +195,9 @@
       1,
       0,
       0,
+      3,
       2,
-      2,
-      24
+      23
     ]
   ],
   "class_names": [
@@ -101,21 +220,21 @@
   ],
   "per_class": {
     "actinic keratoses and intraepithelial carcinoma": {
-      "precision": 0.3419,
-      "recall": 0.6061,
-      "f1-score": 0.4372,
+      "precision": 0.3854,
+      "recall": 0.5606,
+      "f1-score": 0.4568,
       "support": 66.0
     },
     "basal cell carcinoma": {
-      "precision": 0.5638,
+      "precision": 0.5824,
       "recall": 0.5146,
-      "f1-score": 0.5381,
+      "f1-score": 0.5464,
       "support": 103.0
     },
     "benign keratosis-like lesions": {
-      "precision": 0.5455,
-      "recall": 0.4636,
-      "f1-score": 0.5012,
+      "precision": 0.575,
+      "recall": 0.4182,
+      "f1-score": 0.4842,
       "support": 220.0
     },
     "dermatofibroma": {
@@ -125,33 +244,33 @@
       "support": 23.0
     },
     "melanoma": {
-      "precision": 0.4506,
-      "recall": 0.5112,
-      "f1-score": 0.479,
+      "precision": 0.3682,
+      "recall": 0.6637,
+      "f1-score": 0.4736,
       "support": 223.0
     },
     "melanocytic nevi": {
-      "precision": 0.9048,
-      "recall": 0.8717,
-      "f1-score": 0.888,
+      "precision": 0.9206,
+      "recall": 0.821,
+      "f1-score": 0.868,
       "support": 1341.0
     },
     "vascular lesions": {
-      "precision": 0.7273,
-      "recall": 0.8276,
-      "f1-score": 0.7742,
+      "precision": 0.7419,
+      "recall": 0.7931,
+      "f1-score": 0.7667,
       "support": 29.0
     },
     "macro avg": {
-      "precision": 0.5639,
-      "recall": 0.6166,
-      "f1-score": 0.5827,
+      "precision": 0.5696,
+      "recall": 0.6133,
+      "f1-score": 0.5796,
       "support": 2005.0
     },
     "weighted avg": {
-      "precision": 0.7706,
-      "recall": 0.7551,
-      "f1-score": 0.7607,
+      "precision": 0.7778,
+      "recall": 0.7312,
+      "f1-score": 0.7458,
       "support": 2005.0
     }
   },
