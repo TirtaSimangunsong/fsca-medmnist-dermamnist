@@ -1,9 +1,10 @@
 """
-Step 4 (GUI) - Baseline ResNet-18 (tanpa modul atensi) — MODEL UTAMA
-=====================================================================
+Step 4 (GUI) - Baseline ResNet-18 (tanpa modul atensi) — MODEL PEMBANDING
+==========================================================================
 Melatih ResNet-18 POLOS (attention="none"), lalu langsung mengevaluasinya di
-test set. Sesuai feedback dosen 26 Okt 2026, model ini adalah MODEL UTAMA
-(config.MAIN_MODEL = "baseline"); ResNet-18 + FSCA (Step 5–6) menjadi pembanding.
+test set. Laporan skripsi memposisikan model ini sebagai PEMBANDING, sedangkan
+ResNet-18 + FSCA (Step 5–6) adalah model usulan (config.MAIN_MODEL = "fsca").
+Bila dosen memilih baseline sebagai model utama, cukup set MAIN_MODEL = "baseline".
 
 Agar perbandingan dengan FSCA adil, baseline memakai komponen yang SAMA:
 - Arsitektur  : step4_model.build_model(attention="none") -> stem 3x3 stride 1,

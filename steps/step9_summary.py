@@ -5,9 +5,9 @@ Mengumpulkan hasil Step 1–8 dan membuat:
 - Summary card: accuracy, balanced accuracy, F1, AUC, model size, params
 - Info evaluasi: device, modul atensi, TTA, tau logit adjustment, bias melanoma
   (dibaca dari laporan evaluasi MODEL UTAMA, bukan di-hardcode)
-- Model utama = config.MAIN_MODEL (default "baseline", feedback dosen
-  26 Okt 2026); bila comparison_report.json (Step 7) ada, perbandingan
-  baseline vs FSCA ikut dicetak.
+- Model utama = config.MAIN_MODEL (default "fsca" = model usulan); bila
+  comparison_report.json (Step 7) ada, perbandingan baseline vs FSCA ikut
+  dicetak.
 - Tabel perbandingan literatur
 - Summary chart
 

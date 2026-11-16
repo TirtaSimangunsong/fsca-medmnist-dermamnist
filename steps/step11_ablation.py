@@ -30,6 +30,14 @@ Perbaikan dari versi sebelumnya
    (melanoma, dermatofibroma). Checkpoint yang sudah ada hanya dievaluasi
    ulang (tanpa training), jadi recall per kelas untuk run lama bisa didapat
    cepat dengan menjalankan ulang perintah yang sama.
+7. (Finalisasi laporan, Nov 2026) Untuk Tabel 4.11:
+   - recall melanoma tiap run disimpan sebagai metrik tersendiri
+     ("recall_melanoma") sehingga ikut dirata-rata dan diuji;
+   - jumlah parameter modul atensi ("params_attention") dicatat;
+   - uji t berpasangan dilakukan dua arah: setiap modul vs baseline ("none")
+     dan FSCA vs setiap modul atensi lain (termasuk CBAM, inti hipotesis);
+   - baris Tabel 4.11 dicetak dalam format laporan (koma desimal) agar bisa
+     langsung disalin.
 
 Output: outputs/ablation_report.json
         outputs/ablation_comparison.png
@@ -54,8 +62,10 @@ ABLATION_DIR   = PATHS["ablation_dir"]
 REPORT_PATH    = PATHS["ablation_report"]
 CHART_PATH     = PATHS["ablation_chart"]
 
-METRICS      = ["accuracy", "balanced_accuracy", "f1_macro", "auc_macro"]
-TEST_METRICS = ["auc_macro", "f1_macro", "balanced_accuracy", "accuracy"]
+METRICS      = ["accuracy", "balanced_accuracy", "f1_macro", "auc_macro", "recall_melanoma"]
+TEST_METRICS = ["auc_macro", "f1_macro", "balanced_accuracy", "accuracy", "recall_melanoma"]
+LABELS = {"none": "ResNet-18 Baseline", "se": "ResNet-18 + SE", "eca": "ResNet-18 + ECA",
+          "cbam": "ResNet-18 + CBAM", "fsca": "ResNet-18 + FSCA"}
 
 
 def _run_name(attn, seed, epochs, select_metric):
@@ -97,20 +107,25 @@ def _evaluate_checkpoint(ckpt, attention, log_fn):
     }
 
     total_params = sum(p.numel() for p in model.parameters())
+    att_params = sum(p.numel() for n, p in model.named_parameters()
+                     if n.startswith(("fsca1", "fsca2", "fsca3", "fsca4")))
     return {
         "accuracy":          m["acc"],
         "balanced_accuracy": m["balanced_acc"],
         "f1_macro":          m["f1_macro"],
         "auc_macro":         m["auc_macro"],
+        "recall_melanoma":   recall_per_class.get("melanoma", float("nan")),
         "params":            total_params,
+        "params_attention":  att_params,
         "recall_per_class":  recall_per_class,
     }
 
 
-def _paired_tests(raw, reference, log_fn):
+def _paired_tests(raw, reference, log_fn, rivals=None):
     """
     Bandingkan `reference` (mis. "fsca") dengan setiap modul lain, berpasangan
-    per seed. Return dict {rival: {metric: {...}}}.
+    per seed. `rivals` membatasi modul pembanding (default: semua selain
+    reference). Selisih = reference - rival. Return dict {rival: {metric: {...}}}.
     """
     try:
         from scipy import stats
@@ -121,7 +136,7 @@ def _paired_tests(raw, reference, log_fn):
     ref_by_seed = {r["seed"]: r for r in raw.get(reference, [])}
     results = {}
     for rival, runs in raw.items():
-        if rival == reference:
+        if rival == reference or (rivals is not None and rival not in rivals):
             continue
         riv_by_seed = {r["seed"]: r for r in runs}
         seeds = sorted(set(ref_by_seed) & set(riv_by_seed))
@@ -133,6 +148,8 @@ def _paired_tests(raw, reference, log_fn):
                f"(berpasangan per seed, n={len(seeds)}):")
         log_fn(f"  {'Metrik':<18} {'mean selisih':>13} {'menang':>8} {'t':>8} {'p':>8}")
         for metric in TEST_METRICS:
+            if any(metric not in ref_by_seed[s] or metric not in riv_by_seed[s] for s in seeds):
+                continue
             a = np.array([ref_by_seed[s][metric] for s in seeds], dtype=float)
             b = np.array([riv_by_seed[s][metric] for s in seeds], dtype=float)
             diff = a - b
@@ -153,6 +170,34 @@ def _paired_tests(raw, reference, log_fn):
     return results
 
 
+def _fmt(x, nd):
+    """Angka format laporan: koma desimal, titik ribuan."""
+    return f"{x:,.{nd}f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+def _table_rows(summary, attentions, log_fn):
+    """Cetak baris Tabel 4.11 (format laporan) untuk disalin ke Word."""
+    spec = [("accuracy", 2), ("balanced_accuracy", 2), ("f1_macro", 3),
+            ("auc_macro", 4), ("recall_melanoma", 3)]
+    log_fn("")
+    log_fn("  BARIS TABEL 4.11 (salin ke laporan; kolom dipisah ' | ')")
+    log_fn("  Model | Parameter atensi | Accuracy (%) | Balanced acc. (%) | F1 makro | AUC makro | Recall MEL")
+    rows = []
+    for attn in attentions:
+        if attn not in summary:
+            continue
+        s = summary[attn]
+        cells = [LABELS.get(attn, attn), _fmt(s.get("params_attention", 0), 0)]
+        for metric, nd in spec:
+            if metric in s:
+                cells.append(f"{_fmt(s[metric]['mean'], nd)} ± {_fmt(s[metric]['std'], nd)}")
+            else:
+                cells.append("-")
+        rows.append(cells)
+        log_fn("  " + " | ".join(cells))
+    return rows
+
+
 def _plot(summary, path):
     import matplotlib
     matplotlib.use("Agg")
@@ -165,6 +210,9 @@ def _plot(summary, path):
 
     for ax, metric in zip(np.atleast_1d(axes), METRICS):
         ax.set_facecolor("#1a1a1a")
+        if any(metric not in summary[n] for n in names):
+            ax.axis("off")
+            continue
         means = [summary[n][metric]["mean"] for n in names]
         stds = [summary[n][metric]["std"] for n in names]
         ax.bar(names, means, yerr=stds, capsize=5,
@@ -272,9 +320,12 @@ def run(log_fn, attentions=None, seeds=None, epochs=None):
         if not runs:
             continue
         entry = {"n_runs": len(runs), "params": runs[0]["params"],
+                 "params_attention": runs[0].get("params_attention", 0),
                  "seeds": [r["seed"] for r in runs],
                  "best_epochs": [r["best_epoch"] for r in runs]}
         for metric in METRICS:
+            if any(metric not in r for r in runs):
+                continue
             vals = np.array([r[metric] for r in runs], dtype=float)
             entry[metric] = {
                 "mean": float(vals.mean()),
@@ -331,13 +382,27 @@ def run(log_fn, attentions=None, seeds=None, epochs=None):
         log_fn("=" * 96)
 
     # ---------- Uji signifikansi berpasangan ----------
-    tests = {}
-    reference = "fsca" if "fsca" in summary else None
-    if reference and len(summary) > 1:
-        tests = _paired_tests(raw, reference, log_fn)
+    # (a) setiap modul vs baseline  -> "apakah modul ini memperbaiki ResNet-18?"
+    # (b) FSCA vs setiap modul lain  -> "apakah fusi paralel FSCA lebih baik?"
+    #     FSCA vs CBAM adalah uji inti hipotesis (paralel vs sekuensial).
+    tests = {"vs_baseline": {}, "fsca_vs": {}}
+    if "none" in summary and len(summary) > 1:
+        log_fn("\n--- (a) Setiap modul vs baseline (selisih = modul - baseline) ---")
+        for attn in attentions:
+            if attn != "none" and attn in summary:
+                res = _paired_tests(raw, attn, log_fn, rivals=["none"])
+                if "none" in res:
+                    tests["vs_baseline"][attn] = res["none"]
+    others = [a for a in attentions if a not in ("fsca", "none") and a in summary]
+    if "fsca" in summary and others:
+        log_fn("\n--- (b) FSCA vs modul atensi lain (selisih = FSCA - modul) ---")
+        tests["fsca_vs"] = _paired_tests(raw, "fsca", log_fn, rivals=others)
+    if tests["vs_baseline"] or tests["fsca_vs"]:
         log_fn("\nCatatan: p < 0.05 berarti selisih signifikan. Dengan n=5 seed, "
                "selisih kecil yang konsisten (mis. menang 5/5) tetap layak dilaporkan "
                "walau p belum < 0.05.")
+
+    table_rows = _table_rows(summary, attentions, log_fn)
 
     log_fn(f"\nTotal waktu: {(time.time() - t_start) / 60:.1f} menit")
 
@@ -345,6 +410,7 @@ def run(log_fn, attentions=None, seeds=None, epochs=None):
     log_fn(f"Chart perbandingan -> {CHART_PATH}")
 
     payload = {"summary": summary, "raw": raw, "paired_tests": tests,
+               "table_4_11_rows": table_rows,
                "attentions": attentions, "seeds": seeds, "epochs": epochs,
                "select_metric": select_metric, "tta": EVAL_CONFIG.get("tta", False),
                "chart_path": CHART_PATH}

@@ -48,7 +48,13 @@ PERUBAHAN (feedback dosen 26 Okt 2026)
 - TRAIN_HP epochs 100 -> 40 (overfit mulai ~epoch 35).
 - IMBALANCE["melanoma_bias"]: bias melanoma post-hoc dituning di validasi.
 - IMBALANCE["class_weight_boost"]: opsi pengali bobot loss per kelas.
-- MAIN_MODEL + main_model_spec(): baseline menjadi model utama; FSCA pembanding.
+- MAIN_MODEL + main_model_spec(): pilihan model utama untuk Step 8–10.
+
+PERUBAHAN (finalisasi laporan, Nov 2026)
+-----------------------------------------
+- MAIN_MODEL = "fsca": FSCA model usulan, baseline pembanding (sesuai laporan).
+- EXPERIMENT["attentions"] berisi kelima model (none, se, eca, cbam, fsca)
+  untuk Tabel 4.11; run yang sudah selesai dilewati otomatis.
 - PATHS["comparison_report"]: tabel baseline vs FSCA dari Step 7.
 """
 
@@ -274,9 +280,12 @@ EVAL_CONFIG = {
 # EKSPERIMEN ABLASI MULTI-SEED (Step 11)
 # =========================================================
 EXPERIMENT = {
-    # Tahap 1: jawab Rumusan Masalah utama (kontribusi FSCA) dulu.
-    # Tahap 2 (opsional, bila waktu cukup): ["none", "se", "eca", "cbam", "fsca"]
-    "attentions": ["none", "fsca"],
+    # Kelima model untuk Tabel 4.11 (Rumusan Masalah 1 dan 2). Run yang sudah
+    # selesai (none & fsca, ablasi 2 Nov 2026) dilewati dan hanya dievaluasi
+    # ulang, jadi yang benar-benar dilatih hanya SE, ECA, dan CBAM.
+    # Untuk mengulang perbandingan baseline vs FSCA saja:
+    #     python run_ablation.py --attentions none fsca
+    "attentions": ["none", "se", "eca", "cbam", "fsca"],
     "seeds":      [0, 1, 2, 3, 4],
     "epochs":     TRAIN_HP["epochs"],
 }

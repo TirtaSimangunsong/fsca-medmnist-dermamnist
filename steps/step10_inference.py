@@ -6,12 +6,14 @@ dan mendapatkan prediksi kelas + confidence score + Grad-CAM overlay.
 
 Konsistensi dengan step lain:
 - Device dipilih lewat common.resolve_device() (DEVICE_CONFIG "auto").
-- Memakai MODEL UTAMA (config.MAIN_MODEL; default "baseline" sesuai feedback
-  dosen 26 Okt 2026).
+- Memakai MODEL UTAMA (config.MAIN_MODEL; default "fsca" = model usulan).
+- Bias melanoma hasil Step 7 (bila aktif) ikut diterapkan pada logit, sama
+  seperti evaluasi test set.
 - Grad-CAM dipasang pada lapisan terakhir yang sama dengan Step 8:
   `layer4` untuk baseline, `fsca4` (sesudah modul atensi) untuk FSCA.
 - Prediksi memakai satu forward pass (tanpa TTA / logit adjustment),
-  sesuai kondisi pemakaian model pada satu citra.
+  sesuai kondisi pemakaian model pada satu citra. Satu-satunya penyesuaian
+  logit adalah bias melanoma yang dipilih Step 7 di data validasi.
 
 Output: outputs/inference_result.png
 """
@@ -28,6 +30,31 @@ META_PATH     = PATHS["dataset_meta"]
 CONFIG_PATH   = PATHS["preprocess_config"]
 RESULT_PATH   = PATHS["inference_result_chart"]
 
+
+
+def load_melanoma_bias(report_path, n_classes, class_map, log_fn=None):
+    """
+    Ambil bias melanoma yang dipilih Step 7 (di VALIDATION) dari laporan
+    evaluasi model utama. Return (vektor_dikurangkan_dari_logit | None, bias).
+    """
+    import numpy as np
+    if not os.path.exists(report_path):
+        if log_fn:
+            log_fn("Catatan: laporan evaluasi belum ada, prediksi tanpa bias melanoma "
+                   "(jalankan Step 7 dulu).")
+        return None, 0.0
+    with open(report_path) as f:
+        info = json.load(f).get("melanoma_bias", {})
+    bias = float(info.get("bias", 0.0)) if info.get("enabled") else 0.0
+    if not bias:
+        return None, 0.0
+    names = [class_map[str(i)] for i in range(n_classes)]
+    name = info.get("class_name", "melanoma")
+    if name not in names:
+        return None, 0.0
+    vec = np.zeros(n_classes, dtype=np.float32)
+    vec[names.index(name)] = -bias          # konvensi common.class_bias_vector
+    return vec, bias
 
 
 def predict_image(image_path, log_fn):
@@ -73,6 +100,9 @@ def predict_image(image_path, log_fn):
     model.load_state_dict(torch.load(spec["model_path"], map_location=device))
     model.eval()
     log_fn(f"Model utama : {spec['label']}")
+    bias_vec, mel_bias = load_melanoma_bias(spec["report"], n_classes, class_map, log_fn)
+    log_fn(f"Bias melanoma: {mel_bias:+.2f} (dari Step 7)" if mel_bias
+           else "Bias melanoma: tidak dipakai")
 
     log_fn(f"Input citra: {os.path.basename(image_path)}")
 
@@ -95,6 +125,8 @@ def predict_image(image_path, log_fn):
     # Inference
     with torch.no_grad():
         output = model(img_tensor)
+        if bias_vec is not None:
+            output = output - torch.as_tensor(bias_vec, device=output.device)[None, :]
         probs  = F.softmax(output, dim=1).squeeze().cpu().numpy()
         pred   = probs.argmax()
 
@@ -162,6 +194,7 @@ def predict_image(image_path, log_fn):
         "pred_idx":   int(pred),
         "confidence": float(confidence),
         "probs":      probs.tolist(),
+        "melanoma_bias": mel_bias,
         "chart_path": RESULT_PATH,
     }
 

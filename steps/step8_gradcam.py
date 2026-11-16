@@ -2,8 +2,8 @@
 Step 8 - Grad-CAM (Explainable AI) — VERSI PERBAIKAN
 ======================================================
 Menghasilkan heatmap Grad-CAM untuk setiap kelas DermaMNIST
-menggunakan MODEL UTAMA (config.MAIN_MODEL; default "baseline" sesuai
-feedback dosen 26 Okt 2026). Baseline -> CAM dari layer3/layer4;
+menggunakan MODEL UTAMA (config.MAIN_MODEL; default "fsca" = model usulan).
+Baseline -> CAM dari layer3/layer4;
 model dengan atensi -> fsca3/fsca4 + figure efek FSCA (layer4 vs fsca4).
 
 RINGKASAN PERBAIKAN dari versi sebelumnya

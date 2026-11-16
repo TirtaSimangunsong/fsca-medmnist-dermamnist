@@ -10,18 +10,25 @@ Mengukur, untuk setiap model yang checkpoint-nya tersedia:
     di CPU dan, bila ada, di MPS (Apple Silicon).
   - Ukuran berkas checkpoint (.pth).
 
-Model yang diukur (dilewati bila checkpoint belum ada):
+Model yang diukur (kelimanya SELALU diukur):
   - ResNet-18 Baseline  : outputs/ResNet18_Baseline_DermaMNIST_Best.pth
   - ResNet-18 + FSCA    : outputs/ResNet18_FSCA_DermaMNIST_Best.pth
   - ResNet-18 + SE/ECA/CBAM : outputs/ablation/<attn>_seed0_ep<E>_auc.pth
-    (hasil Step 11; hanya bila ablasi SE/ECA/CBAM sudah dijalankan)
+    (hasil Step 11)
+Parameter, FLOPs, dan latensi hanya bergantung pada ARSITEKTUR, bukan pada
+nilai bobot. Jadi bila checkpoint suatu model belum ada (mis. ablasi SE/ECA/
+CBAM belum dijalankan), model dibangun dengan bobot acak dan tetap diukur.
+Ukuran berkas dihitung dari torch.save(state_dict) ke memori, sehingga sama
+persis dengan ukuran .pth yang akan dihasilkan training.
 
 Cara pakai (di folder repo):
     PYTORCH_ENABLE_MPS_FALLBACK=1 python measure_efficiency.py
 
-Output: outputs/efficiency_report.json (+ tabel di terminal)
+Output: outputs/efficiency_report.json (+ tabel di terminal dan baris
+        Tabel 4.12 dalam format laporan, koma desimal)
 """
 
+import io
 import os
 import sys
 import json
@@ -123,6 +130,19 @@ def measure_latency(model, device, size):
     }
 
 
+def _fmt(x, nd):
+    """Angka format laporan: koma desimal, titik ribuan."""
+    return f"{x:,.{nd}f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+def state_dict_mb(model):
+    """Ukuran torch.save(state_dict) dalam MB (sama dengan berkas .pth)."""
+    import torch
+    buf = io.BytesIO()
+    torch.save(model.state_dict(), buf)
+    return buf.getbuffer().nbytes / 1e6
+
+
 def main():
     import torch
     from step4_model import build_model
@@ -139,11 +159,13 @@ def main():
 
     results = []
     for label, attn, ckpt in _candidates():
-        if not os.path.exists(ckpt):
-            print(f"[lewati] {label}: checkpoint tidak ada ({os.path.relpath(ckpt, BASE_DIR)})")
-            continue
         model = build_model(n_classes=n_classes, pretrained=False, attention=attn)
-        model.load_state_dict(torch.load(ckpt, map_location="cpu"))
+        has_ckpt = os.path.exists(ckpt)
+        if has_ckpt:
+            model.load_state_dict(torch.load(ckpt, map_location="cpu"))
+        else:
+            print(f"[info] {label}: checkpoint belum ada ({os.path.relpath(ckpt, BASE_DIR)}), "
+                  f"diukur dari arsitektur dengan bobot acak.")
         model.eval()
 
         total = sum(p.numel() for p in model.parameters())
@@ -152,21 +174,19 @@ def main():
         macs = count_flops(model, torch.randn(1, 3, size, size))
         entry = {
             "model": label, "attention": attn,
-            "checkpoint": os.path.relpath(ckpt, BASE_DIR),
+            "checkpoint": os.path.relpath(ckpt, BASE_DIR) if has_ckpt else None,
+            "weights": "checkpoint" if has_ckpt else "acak (arsitektur saja)",
             "params_total": total, "params_attention": att,
             "macs_total": macs["total"], "macs_attention": macs["attention"],
             "gflops_total": round(2 * macs["total"] / 1e9, 4),
-            "file_size_mb": round(os.path.getsize(ckpt) / 1e6, 2),
+            "file_size_mb": round(os.path.getsize(ckpt) / 1e6, 2) if has_ckpt
+                            else round(state_dict_mb(model), 2),
             "latency": {},
         }
         for dev in devices:
             print(f"Mengukur {label} di {dev.type} ...")
             entry["latency"][dev.type] = measure_latency(model, dev, size)
         results.append(entry)
-
-    if not results:
-        print("Tidak ada checkpoint yang bisa diukur. Jalankan Step 4 dan Step 6 dulu.")
-        return
 
     report = {
         "image_size": size, "torch": torch.__version__,
@@ -175,8 +195,6 @@ def main():
                      "throughput_batch": THROUGHPUT_BATCH, "throughput_runs": THROUGHPUT_RUNS},
         "models": results,
     }
-    with open(REPORT_PATH, "w") as f:
-        json.dump(report, f, indent=2)
 
     print("\n" + "=" * 100)
     print(f"{'Model':<22}{'Parameter':>13}{'Param atensi':>14}{'GFLOPs':>9}{'File (MB)':>11}"
@@ -187,7 +205,38 @@ def main():
         print(f"{r['model']:<22}{r['params_total']:>13,}{r['params_attention']:>14,}"
               f"{r['gflops_total']:>9.4f}{r['file_size_mb']:>11.2f}{lat}")
     print("=" * 100)
-    print(f"Laporan tersimpan -> {REPORT_PATH}")
+
+    # Baris Tabel 4.12 (format laporan)
+    lat_dev = [d for d in ("cpu", "mps", "cuda") if d in report["devices"]]
+    print("\nBARIS TABEL 4.12 (salin ke laporan; kolom dipisah ' | ')")
+    print("Model | Parameter | GFLOPs per citra | Ukuran berkas (MB) | "
+          + " | ".join(f"Latensi {d.upper()} (ms)" for d in lat_dev))
+    rows = []
+    for r in results:
+        cells = [r["model"], _fmt(r["params_total"], 0), _fmt(r["gflops_total"], 4),
+                 _fmt(r["file_size_mb"], 1)]
+        for d in lat_dev:
+            L = r["latency"][d]
+            cells.append(f"{_fmt(L['latency_ms_mean'], 2)} ± {_fmt(L['latency_ms_std'], 2)}")
+        rows.append(cells)
+        print(" | ".join(cells))
+    base = next((r for r in results if r["attention"] == "none"), None)
+    if base:
+        print("\nSelisih terhadap baseline:")
+        for r in results:
+            if r is base:
+                continue
+            line = (f"  {r['model']:<18} +{r['params_attention']:,} parameter "
+                    f"(+{100 * r['params_attention'] / base['params_total']:.2f}%), "
+                    f"+{r['gflops_total'] - base['gflops_total']:.4f} GFLOPs")
+            for d in lat_dev:
+                b, m = base["latency"][d]["latency_ms_mean"], r["latency"][d]["latency_ms_mean"]
+                line += f", latensi {d} {100 * (m - b) / b:+.1f}%"
+            print(line)
+    report["table_4_12_rows"] = rows
+    with open(REPORT_PATH, "w") as f:
+        json.dump(report, f, indent=2)
+    print(f"\nLaporan tersimpan -> {REPORT_PATH}")
 
 
 if __name__ == "__main__":

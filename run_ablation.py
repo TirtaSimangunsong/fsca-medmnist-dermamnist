@@ -7,6 +7,7 @@ tidak hilang walau terminal ditutup.
 
 Contoh (dari folder root repo):
     caffeinate -i python run_ablation.py
+    caffeinate -i python run_ablation.py --attentions none se eca cbam fsca
     caffeinate -i python run_ablation.py --attentions none fsca --seeds 0 1 2 3 4
     caffeinate -i python run_ablation.py --epochs 40
 

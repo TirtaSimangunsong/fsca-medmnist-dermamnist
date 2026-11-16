@@ -8,15 +8,19 @@ Urutan step:
    1. Ekstraksi            -> step1_extract.py
    2. Preprocessing        -> step2_preprocess.py
    3. Split Data           -> step3_split.py
-   4. Baseline ResNet-18   -> step_baseline.py   (MODEL UTAMA: train + evaluasi tanpa atensi)
+   4. Baseline ResNet-18   -> step_baseline.py   (model pembanding: train + evaluasi tanpa atensi)
    5. Model FSCA           -> step4_model.py
-   6. Training FSCA        -> step5_training.py  (model pembanding)
+   6. Training FSCA        -> step5_training.py  (MODEL USULAN)
    7. Evaluasi & Perbandingan -> step7_evaluation.py (evaluasi kedua model + tabel)
    8. Grad-CAM             -> step8_gradcam.py   (model utama)
    9. Summary              -> step9_summary.py   (model utama + perbandingan)
   10. Inference            -> step10_inference.py (model utama)
 Fine-tuning (Fase 2) sudah dihapus dari pipeline.
-Model utama diatur oleh config.MAIN_MODEL (default "baseline", feedback dosen 26 Okt 2026).
+Model utama diatur oleh config.MAIN_MODEL (default "fsca" = model usulan laporan;
+ganti ke "baseline" bila dosen memutuskan baseline sebagai model utama).
+Step 11 (ablasi multi-seed) dan pengukuran efisiensi dijalankan dari terminal:
+    python run_ablation.py --attentions none se eca cbam fsca
+    python measure_efficiency.py
 """
 
 import tkinter as tk
