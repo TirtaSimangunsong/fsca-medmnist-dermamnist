@@ -1,0 +1,528 @@
+{
+  "image_size": 28,
+  "torch": "2.12.1",
+  "devices": [
+    "cpu",
+    "mps"
+  ],
+  "protocol": {
+    "warmup": 20,
+    "runs_batch1": 200,
+    "throughput_batch": 256,
+    "throughput_runs": 20
+  },
+  "models": [
+    {
+      "model": "ResNet-18 Baseline",
+      "attention": "none",
+      "checkpoint": "outputs/ResNet18_Baseline_DermaMNIST_Best.pth",
+      "weights": "checkpoint",
+      "params_total": 11172423,
+      "params_attention": 0,
+      "macs_total": 456702464,
+      "macs_attention": 0,
+      "gflops_total": 0.9134,
+      "slots": {
+        "fsca1": {
+          "after": "layer1",
+          "shape_chw": [
+            64,
+            28,
+            28
+          ],
+          "params": 0,
+          "macs": 0
+        },
+        "fsca2": {
+          "after": "layer2",
+          "shape_chw": [
+            128,
+            14,
+            14
+          ],
+          "params": 0,
+          "macs": 0
+        },
+        "fsca3": {
+          "after": "layer3",
+          "shape_chw": [
+            256,
+            7,
+            7
+          ],
+          "params": 0,
+          "macs": 0
+        },
+        "fsca4": {
+          "after": "layer4",
+          "shape_chw": [
+            512,
+            4,
+            4
+          ],
+          "params": 0,
+          "macs": 0
+        }
+      },
+      "file_size_mb": 44.77,
+      "latency": {
+        "cpu": {
+          "latency_ms_mean": 3.22,
+          "latency_ms_median": 3.211,
+          "latency_ms_std": 0.035,
+          "throughput_img_per_s": 339.2
+        },
+        "mps": {
+          "latency_ms_mean": 3.533,
+          "latency_ms_median": 3.537,
+          "latency_ms_std": 0.067,
+          "throughput_img_per_s": 2639.0
+        }
+      }
+    },
+    {
+      "model": "ResNet-18 + SE",
+      "attention": "se",
+      "checkpoint": null,
+      "weights": "acak (arsitektur saja)",
+      "params_total": 11215943,
+      "params_attention": 43520,
+      "macs_total": 456745984,
+      "macs_attention": 43520,
+      "gflops_total": 0.9135,
+      "slots": {
+        "fsca1": {
+          "after": "layer1",
+          "shape_chw": [
+            64,
+            28,
+            28
+          ],
+          "params": 512,
+          "macs": 512
+        },
+        "fsca2": {
+          "after": "layer2",
+          "shape_chw": [
+            128,
+            14,
+            14
+          ],
+          "params": 2048,
+          "macs": 2048
+        },
+        "fsca3": {
+          "after": "layer3",
+          "shape_chw": [
+            256,
+            7,
+            7
+          ],
+          "params": 8192,
+          "macs": 8192
+        },
+        "fsca4": {
+          "after": "layer4",
+          "shape_chw": [
+            512,
+            4,
+            4
+          ],
+          "params": 32768,
+          "macs": 32768
+        }
+      },
+      "file_size_mb": 44.94,
+      "latency": {
+        "cpu": {
+          "latency_ms_mean": 3.328,
+          "latency_ms_median": 3.309,
+          "latency_ms_std": 0.073,
+          "throughput_img_per_s": 342.1
+        },
+        "mps": {
+          "latency_ms_mean": 3.866,
+          "latency_ms_median": 3.859,
+          "latency_ms_std": 0.054,
+          "throughput_img_per_s": 2522.0
+        }
+      }
+    },
+    {
+      "model": "ResNet-18 + ECA",
+      "attention": "eca",
+      "checkpoint": null,
+      "weights": "acak (arsitektur saja)",
+      "params_total": 11172441,
+      "params_attention": 18,
+      "macs_total": 456707136,
+      "macs_attention": 4672,
+      "gflops_total": 0.9134,
+      "slots": {
+        "fsca1": {
+          "after": "layer1",
+          "shape_chw": [
+            64,
+            28,
+            28
+          ],
+          "params": 3,
+          "macs": 192
+        },
+        "fsca2": {
+          "after": "layer2",
+          "shape_chw": [
+            128,
+            14,
+            14
+          ],
+          "params": 5,
+          "macs": 640
+        },
+        "fsca3": {
+          "after": "layer3",
+          "shape_chw": [
+            256,
+            7,
+            7
+          ],
+          "params": 5,
+          "macs": 1280
+        },
+        "fsca4": {
+          "after": "layer4",
+          "shape_chw": [
+            512,
+            4,
+            4
+          ],
+          "params": 5,
+          "macs": 2560
+        }
+      },
+      "file_size_mb": 44.77,
+      "latency": {
+        "cpu": {
+          "latency_ms_mean": 3.251,
+          "latency_ms_median": 3.224,
+          "latency_ms_std": 0.101,
+          "throughput_img_per_s": 340.0
+        },
+        "mps": {
+          "latency_ms_mean": 3.904,
+          "latency_ms_median": 3.897,
+          "latency_ms_std": 0.052,
+          "throughput_img_per_s": 2522.2
+        }
+      }
+    },
+    {
+      "model": "ResNet-18 + CBAM",
+      "attention": "cbam",
+      "checkpoint": null,
+      "weights": "acak (arsitektur saja)",
+      "params_total": 11216335,
+      "params_attention": 43912,
+      "macs_total": 456891914,
+      "macs_attention": 189450,
+      "gflops_total": 0.9138,
+      "slots": {
+        "fsca1": {
+          "after": "layer1",
+          "shape_chw": [
+            64,
+            28,
+            28
+          ],
+          "params": 610,
+          "macs": 77856
+        },
+        "fsca2": {
+          "after": "layer2",
+          "shape_chw": [
+            128,
+            14,
+            14
+          ],
+          "params": 2146,
+          "macs": 23304
+        },
+        "fsca3": {
+          "after": "layer3",
+          "shape_chw": [
+            256,
+            7,
+            7
+          ],
+          "params": 8290,
+          "macs": 21186
+        },
+        "fsca4": {
+          "after": "layer4",
+          "shape_chw": [
+            512,
+            4,
+            4
+          ],
+          "params": 32866,
+          "macs": 67104
+        }
+      },
+      "file_size_mb": 44.95,
+      "latency": {
+        "cpu": {
+          "latency_ms_mean": 3.442,
+          "latency_ms_median": 3.405,
+          "latency_ms_std": 0.157,
+          "throughput_img_per_s": 325.7
+        },
+        "mps": {
+          "latency_ms_mean": 4.488,
+          "latency_ms_median": 4.479,
+          "latency_ms_std": 0.077,
+          "throughput_img_per_s": 2315.8
+        }
+      }
+    },
+    {
+      "model": "ResNet-18 + FSCA",
+      "attention": "fsca",
+      "checkpoint": "outputs/ResNet18_FSCA_DermaMNIST_Best.pth",
+      "weights": "checkpoint",
+      "params_total": 11914575,
+      "params_attention": 742152,
+      "macs_total": 484548106,
+      "macs_attention": 27845642,
+      "gflops_total": 0.9691,
+      "slots": {
+        "fsca1": {
+          "after": "layer1",
+          "shape_chw": [
+            64,
+            28,
+            28
+          ],
+          "params": 8930,
+          "macs": 6500384
+        },
+        "fsca2": {
+          "after": "layer2",
+          "shape_chw": [
+            128,
+            14,
+            14
+          ],
+          "params": 35170,
+          "macs": 6445832
+        },
+        "fsca3": {
+          "after": "layer3",
+          "shape_chw": [
+            256,
+            7,
+            7
+          ],
+          "params": 139874,
+          "macs": 6443714
+        },
+        "fsca4": {
+          "after": "layer4",
+          "shape_chw": [
+            512,
+            4,
+            4
+          ],
+          "params": 558178,
+          "macs": 8455712
+        }
+      },
+      "file_size_mb": 47.76,
+      "latency": {
+        "cpu": {
+          "latency_ms_mean": 3.705,
+          "latency_ms_median": 3.697,
+          "latency_ms_std": 0.047,
+          "throughput_img_per_s": 234.5
+        },
+        "mps": {
+          "latency_ms_mean": 4.987,
+          "latency_ms_median": 4.973,
+          "latency_ms_std": 0.157,
+          "throughput_img_per_s": 1987.9
+        }
+      }
+    }
+  ],
+  "table_4_12_rows": [
+    [
+      "ResNet-18 Baseline",
+      "11.172.423",
+      "0,9134",
+      "44,8",
+      "3,22 \u00b1 0,04",
+      "3,53 \u00b1 0,07"
+    ],
+    [
+      "ResNet-18 + SE",
+      "11.215.943",
+      "0,9135",
+      "44,9",
+      "3,33 \u00b1 0,07",
+      "3,87 \u00b1 0,05"
+    ],
+    [
+      "ResNet-18 + ECA",
+      "11.172.441",
+      "0,9134",
+      "44,8",
+      "3,25 \u00b1 0,10",
+      "3,90 \u00b1 0,05"
+    ],
+    [
+      "ResNet-18 + CBAM",
+      "11.216.335",
+      "0,9138",
+      "45,0",
+      "3,44 \u00b1 0,16",
+      "4,49 \u00b1 0,08"
+    ],
+    [
+      "ResNet-18 + FSCA",
+      "11.914.575",
+      "0,9691",
+      "47,8",
+      "3,71 \u00b1 0,05",
+      "4,99 \u00b1 0,16"
+    ]
+  ],
+  "table_4_4_rows": {
+    "se": [
+      [
+        "fsca1 (setelah layer1)",
+        "64 \u00d7 28 \u00d7 28",
+        "512",
+        "512"
+      ],
+      [
+        "fsca2 (setelah layer2)",
+        "128 \u00d7 14 \u00d7 14",
+        "2.048",
+        "2.048"
+      ],
+      [
+        "fsca3 (setelah layer3)",
+        "256 \u00d7 7 \u00d7 7",
+        "8.192",
+        "8.192"
+      ],
+      [
+        "fsca4 (setelah layer4)",
+        "512 \u00d7 4 \u00d7 4",
+        "32.768",
+        "32.768"
+      ],
+      [
+        "Total",
+        "",
+        "43.520",
+        "43.520"
+      ]
+    ],
+    "eca": [
+      [
+        "fsca1 (setelah layer1)",
+        "64 \u00d7 28 \u00d7 28",
+        "3",
+        "192"
+      ],
+      [
+        "fsca2 (setelah layer2)",
+        "128 \u00d7 14 \u00d7 14",
+        "5",
+        "640"
+      ],
+      [
+        "fsca3 (setelah layer3)",
+        "256 \u00d7 7 \u00d7 7",
+        "5",
+        "1.280"
+      ],
+      [
+        "fsca4 (setelah layer4)",
+        "512 \u00d7 4 \u00d7 4",
+        "5",
+        "2.560"
+      ],
+      [
+        "Total",
+        "",
+        "18",
+        "4.672"
+      ]
+    ],
+    "cbam": [
+      [
+        "fsca1 (setelah layer1)",
+        "64 \u00d7 28 \u00d7 28",
+        "610",
+        "77.856"
+      ],
+      [
+        "fsca2 (setelah layer2)",
+        "128 \u00d7 14 \u00d7 14",
+        "2.146",
+        "23.304"
+      ],
+      [
+        "fsca3 (setelah layer3)",
+        "256 \u00d7 7 \u00d7 7",
+        "8.290",
+        "21.186"
+      ],
+      [
+        "fsca4 (setelah layer4)",
+        "512 \u00d7 4 \u00d7 4",
+        "32.866",
+        "67.104"
+      ],
+      [
+        "Total",
+        "",
+        "43.912",
+        "189.450"
+      ]
+    ],
+    "fsca": [
+      [
+        "fsca1 (setelah layer1)",
+        "64 \u00d7 28 \u00d7 28",
+        "8.930",
+        "6.500.384"
+      ],
+      [
+        "fsca2 (setelah layer2)",
+        "128 \u00d7 14 \u00d7 14",
+        "35.170",
+        "6.445.832"
+      ],
+      [
+        "fsca3 (setelah layer3)",
+        "256 \u00d7 7 \u00d7 7",
+        "139.874",
+        "6.443.714"
+      ],
+      [
+        "fsca4 (setelah layer4)",
+        "512 \u00d7 4 \u00d7 4",
+        "558.178",
+        "8.455.712"
+      ],
+      [
+        "Total",
+        "",
+        "742.152",
+        "27.845.642"
+      ]
+    ]
+  }
+}
