@@ -231,8 +231,10 @@ IMBALANCE = {
 # "baseline" -> ResNet-18 tanpa atensi (Step 4) menjadi model utama untuk
 #               Grad-CAM (Step 8), Summary (Step 9), dan Inference (Step 10).
 #               FSCA dilaporkan sebagai model pembanding (Step 7).
-# "fsca"     -> perilaku lama: ResNet-18 + FSCA (Step 6) sebagai model utama.
-MAIN_MODEL = "baseline"
+# "fsca"     -> ResNet-18 + FSCA (Step 6) sebagai model utama / model usulan.
+# Laporan skripsi (Nov 2026) memposisikan FSCA sebagai model usulan dan
+# baseline sebagai pembanding, sehingga default-nya "fsca".
+MAIN_MODEL = "fsca"
 
 
 def main_model_spec():
