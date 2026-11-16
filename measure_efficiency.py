@@ -9,6 +9,8 @@ Mengukur, untuk setiap model yang checkpoint-nya tersedia:
   - Latensi inferensi per citra (batch 1) dan throughput (batch 256)
     di CPU dan, bila ada, di MPS (Apple Silicon).
   - Ukuran berkas checkpoint (.pth).
+  - Rincian parameter dan MAC per slot atensi (fsca1..fsca4) beserta dimensi
+    peta fiturnya, untuk Tabel 4.4.
 
 Model yang diukur (kelimanya SELALU diukur):
   - ResNet-18 Baseline  : outputs/ResNet18_Baseline_DermaMNIST_Best.pth
@@ -25,7 +27,7 @@ Cara pakai (di folder repo):
     PYTORCH_ENABLE_MPS_FALLBACK=1 python measure_efficiency.py
 
 Output: outputs/efficiency_report.json (+ tabel di terminal dan baris
-        Tabel 4.12 dalam format laporan, koma desimal)
+        Tabel 4.4 dan Tabel 4.12 dalam format laporan, koma desimal)
 """
 
 import io
@@ -43,6 +45,8 @@ from config import PATHS, DATASET, EXPERIMENT  # noqa: E402
 
 REPORT_PATH = os.path.join(PATHS["output_dir"], "efficiency_report.json")
 WARMUP, RUNS = 20, 200          # batch 1
+SLOTS = ("fsca1", "fsca2", "fsca3", "fsca4")
+SLOT_AFTER = {"fsca1": "layer1", "fsca2": "layer2", "fsca3": "layer3", "fsca4": "layer4"}
 THROUGHPUT_BATCH, THROUGHPUT_RUNS = 256, 20
 
 
@@ -59,12 +63,16 @@ def _candidates():
 
 
 def count_flops(model, x):
-    """MAC dari Conv1d/Conv2d/Linear lewat forward hook, untuk SATU citra."""
+    """
+    MAC dari Conv1d/Conv2d/Linear lewat forward hook, untuk SATU citra.
+    Return {"total", "attention", "slots": {fsca1: MAC, ...}, "shapes": {fsca1: (C, H, W)}}.
+    """
+    import torch
     import torch.nn as nn
-    macs = {"total": 0, "attention": 0}
+    macs = {"total": 0, "attention": 0, "slots": {s: 0 for s in SLOTS}, "shapes": {}}
     hooks = []
 
-    def make_hook(in_attention):
+    def make_hook(slot):
         def hook(mod, inp, out):
             n = 0
             if isinstance(mod, nn.Conv2d):
@@ -75,15 +83,23 @@ def count_flops(model, x):
             elif isinstance(mod, nn.Linear):
                 n = out.numel() // out.shape[0] * mod.in_features
             macs["total"] += n
-            if in_attention:
+            if slot:
                 macs["attention"] += n
+                macs["slots"][slot] += n
+        return hook
+
+    def shape_hook(slot):
+        def hook(mod, inp, out):
+            macs["shapes"][slot] = tuple(int(d) for d in inp[0].shape[1:])
         return hook
 
     for name, mod in model.named_modules():
         if isinstance(mod, (nn.Conv1d, nn.Conv2d, nn.Linear)):
-            in_att = name.startswith(("fsca1", "fsca2", "fsca3", "fsca4"))
-            hooks.append(mod.register_forward_hook(make_hook(in_att)))
-    import torch
+            slot = name.split(".")[0] if name.split(".")[0] in SLOTS else None
+            hooks.append(mod.register_forward_hook(make_hook(slot)))
+    for slot in SLOTS:
+        if hasattr(model, slot):
+            hooks.append(getattr(model, slot).register_forward_hook(shape_hook(slot)))
     with torch.no_grad():
         model(x)
     for h in hooks:
@@ -170,8 +186,17 @@ def main():
 
         total = sum(p.numel() for p in model.parameters())
         att = sum(p.numel() for n, p in model.named_parameters()
-                  if n.startswith(("fsca1", "fsca2", "fsca3", "fsca4")))
+                  if n.split(".")[0] in SLOTS)
         macs = count_flops(model, torch.randn(1, 3, size, size))
+        slots = {}
+        for slot in SLOTS:
+            slots[slot] = {
+                "after": SLOT_AFTER[slot],
+                "shape_chw": list(macs["shapes"].get(slot, ())),
+                "params": sum(p.numel() for n, p in model.named_parameters()
+                              if n.split(".")[0] == slot),
+                "macs": macs["slots"][slot],
+            }
         entry = {
             "model": label, "attention": attn,
             "checkpoint": os.path.relpath(ckpt, BASE_DIR) if has_ckpt else None,
@@ -179,6 +204,7 @@ def main():
             "params_total": total, "params_attention": att,
             "macs_total": macs["total"], "macs_attention": macs["attention"],
             "gflops_total": round(2 * macs["total"] / 1e9, 4),
+            "slots": slots,
             "file_size_mb": round(os.path.getsize(ckpt) / 1e6, 2) if has_ckpt
                             else round(state_dict_mb(model), 2),
             "latency": {},
@@ -234,6 +260,24 @@ def main():
                 line += f", latensi {d} {100 * (m - b) / b:+.1f}%"
             print(line)
     report["table_4_12_rows"] = rows
+
+    # Baris Tabel 4.4 (rincian per slot) untuk setiap model beratensi
+    report["table_4_4_rows"] = {}
+    for r in results:
+        if r["attention"] == "none":
+            continue
+        print(f"\nBARIS TABEL 4.4 ({r['model']}, per slot)")
+        print("Posisi | Dimensi peta fitur (C × H × W) | Parameter | MAC per citra")
+        rows4 = []
+        for slot, d in r["slots"].items():
+            dims = " × ".join(str(v) for v in d["shape_chw"])
+            cells = [f"{slot} (setelah {d['after']})", dims, _fmt(d["params"], 0), _fmt(d["macs"], 0)]
+            rows4.append(cells)
+            print(" | ".join(cells))
+        tot = ["Total", "", _fmt(r["params_attention"], 0), _fmt(r["macs_attention"], 0)]
+        rows4.append(tot)
+        print(" | ".join(tot))
+        report["table_4_4_rows"][r["attention"]] = rows4
     with open(REPORT_PATH, "w") as f:
         json.dump(report, f, indent=2)
     print(f"\nLaporan tersimpan -> {REPORT_PATH}")

@@ -58,7 +58,21 @@ python measure_efficiency.py
 ```
 
 Kedua perintah mencetak baris tabel dalam format laporan (koma desimal) yang bisa langsung
-disalin ke Tabel 4.11 dan Tabel 4.12.
+disalin ke laporan: `run_ablation.py` untuk Tabel 4.9, 4.10, dan 4.11, sedangkan
+`measure_efficiency.py` untuk Tabel 4.4 (rincian per slot) dan Tabel 4.12.
+
+Baris "100 epoch" pada Tabel 4.8 (resep lama) dievaluasi ulang dari checkpoint yang sudah ada
+dan disimpan terpisah ke `ablation_report_ep100.json`, sehingga laporan resep final tidak tertimpa:
+
+```bash
+python run_ablation.py --attentions none fsca --epochs 100
+```
+
+Gambar 4.2–4.7 dibuat ulang dari berkas JSON di `outputs/` (gaya laporan, koma desimal):
+
+```bash
+python make_report_figures.py      # hasil: outputs/report_figures/
+```
 
 ## Resep pelatihan
 
@@ -82,7 +96,9 @@ disalin ke Tabel 4.11 dan Tabel 4.12.
 | `training_curve.png`, `baseline_training_curve.png` | Step 4, Step 6 | Gambar 4.2 |
 | `gradcam_grid.png`, `gradcam_fsca_effect.png` | Step 8 | Gambar 4.6–4.7 |
 | `ablation_report.json`, `ablation_comparison.png` | `run_ablation.py` | Tabel 4.8–4.11, Gambar 4.5 |
-| `efficiency_report.json` | `measure_efficiency.py` | Tabel 4.12 |
+| `ablation_report_ep100.json` | `run_ablation.py --epochs 100` | Tabel 4.8 (baris 100 epoch) |
+| `efficiency_report.json` | `measure_efficiency.py` | Tabel 4.4, Tabel 4.12 |
+| `report_figures/gambar_4_*.png` | `make_report_figures.py` | Gambar 4.2–4.7 |
 
 ## Struktur
 
@@ -91,6 +107,7 @@ config.py              konfigurasi terpusat (path, dataset, augmentasi, HP, mode
 gui.py                 antarmuka Tkinter (Step 1–10)
 run_ablation.py        Step 11 dari terminal (log ke outputs/ablation/ablation_log.txt)
 measure_efficiency.py  parameter, FLOPs, latensi, ukuran berkas
+make_report_figures.py gambar Bab IV dari outputs/*.json
 steps/common.py        dataloader, transformasi, metrik, bias melanoma
 steps/step*.py         satu berkas per tahap pipeline
 ```

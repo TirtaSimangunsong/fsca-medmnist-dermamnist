@@ -38,8 +38,15 @@ Perbaikan dari versi sebelumnya
      dan FSCA vs setiap modul atensi lain (termasuk CBAM, inti hipotesis);
    - baris Tabel 4.11 dicetak dalam format laporan (koma desimal) agar bisa
      langsung disalin.
+8. Recall setiap kelas juga diuji berpasangan (modul vs baseline), sehingga
+   baris "Recall nevi" pada Tabel 4.9 dan kolom p-value Tabel 4.10 berasal
+   dari kode. Baris Tabel 4.9 dan Tabel 4.10 ikut dicetak dalam format laporan.
+9. Resep selain TRAIN_HP["epochs"] (mis. --epochs 100 untuk baris "100 epoch"
+   pada Tabel 4.8) disimpan ke ablation_report_ep<E>.json, sehingga tidak
+   menimpa laporan resep final.
 
-Output: outputs/ablation_report.json
+Output: outputs/ablation_report.json        (resep final, 40 epoch)
+        outputs/ablation_report_ep<E>.json  (resep lain, mis. ep100)
         outputs/ablation_comparison.png
         outputs/ablation/<attention>_seed<seed>_ep<E>_<metric>.pth
         outputs/ablation/<attention>_seed<seed>_ep<E>_<metric>.history.json
@@ -66,6 +73,19 @@ METRICS      = ["accuracy", "balanced_accuracy", "f1_macro", "auc_macro", "recal
 TEST_METRICS = ["auc_macro", "f1_macro", "balanced_accuracy", "accuracy", "recall_melanoma"]
 LABELS = {"none": "ResNet-18 Baseline", "se": "ResNet-18 + SE", "eca": "ResNet-18 + ECA",
           "cbam": "ResNet-18 + CBAM", "fsca": "ResNet-18 + FSCA"}
+ABBR = {"actinic keratoses and intraepithelial carcinoma": "AKIEC",
+        "basal cell carcinoma": "BCC", "benign keratosis-like lesions": "BKL",
+        "dermatofibroma": "DF", "melanoma": "MEL", "melanocytic nevi": "NV",
+        "vascular lesions": "VASC"}
+
+
+def _report_paths(epochs):
+    """Resep final -> ablation_report.json; resep lain -> ..._ep<E>.json."""
+    if epochs == TRAIN_HP["epochs"]:
+        return REPORT_PATH, CHART_PATH
+    root, ext = os.path.splitext(REPORT_PATH)
+    croot, cext = os.path.splitext(CHART_PATH)
+    return f"{root}_ep{epochs}{ext}", f"{croot}_ep{epochs}{cext}"
 
 
 def _run_name(attn, seed, epochs, select_metric):
@@ -105,6 +125,8 @@ def _evaluate_checkpoint(ckpt, attention, log_fn):
         class_map[str(i)]: common.class_recall(m["y_true"], m["y_pred"], i)
         for i in range(n_classes)
     }
+    y_true = np.asarray(m["y_true"])
+    n_test_per_class = {class_map[str(i)]: int((y_true == i).sum()) for i in range(n_classes)}
 
     total_params = sum(p.numel() for p in model.parameters())
     att_params = sum(p.numel() for n, p in model.named_parameters()
@@ -118,6 +140,7 @@ def _evaluate_checkpoint(ckpt, attention, log_fn):
         "params":            total_params,
         "params_attention":  att_params,
         "recall_per_class":  recall_per_class,
+        "n_test_per_class":  n_test_per_class,
     }
 
 
@@ -170,9 +193,90 @@ def _paired_tests(raw, reference, log_fn, rivals=None):
     return results
 
 
+def _paired_class_tests(raw, attn, ref="none"):
+    """
+    Uji t berpasangan recall SETIAP KELAS: `attn` vs `ref`, per seed.
+    Return {kelas: {mean_diff, wins, n, t, p}} (selisih = attn - ref).
+    """
+    try:
+        from scipy import stats
+    except ImportError:
+        return {}
+    a_by = {r["seed"]: r for r in raw.get(attn, [])}
+    b_by = {r["seed"]: r for r in raw.get(ref, [])}
+    seeds = sorted(set(a_by) & set(b_by))
+    if len(seeds) < 2:
+        return {}
+    out = {}
+    for cls in a_by[seeds[0]].get("recall_per_class", {}):
+        a = np.array([a_by[s]["recall_per_class"][cls] for s in seeds], dtype=float)
+        b = np.array([b_by[s]["recall_per_class"][cls] for s in seeds], dtype=float)
+        diff = a - b
+        if np.allclose(diff, diff[0]):
+            t, p = float("nan"), 1.0 if np.allclose(diff, 0) else float("nan")
+        else:
+            t, p = stats.ttest_rel(a, b)
+        out[cls] = {"mean_diff": float(diff.mean()), "wins": int((diff > 0).sum()),
+                    "n": len(seeds), "t": float(t), "p": float(p)}
+    return out
+
+
 def _fmt(x, nd):
     """Angka format laporan: koma desimal, titik ribuan."""
     return f"{x:,.{nd}f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+def _signed(x, nd, unit=""):
+    """+0,0034 / −1,01 poin (tanda minus tipografis seperti di laporan)."""
+    s = _fmt(abs(x), nd)
+    return f"{'+' if x >= 0 else '−'}{s}{unit}"
+
+
+def _table_4_9_rows(tests, class_tests, attn, log_fn):
+    """Baris Tabel 4.9: uji t berpasangan `attn` terhadap baseline."""
+    t = tests.get("vs_baseline", {}).get(attn)
+    if not t:
+        return []
+    spec = [("AUC makro", t.get("auc_macro"), 4, ""),
+            ("Balanced accuracy", t.get("balanced_accuracy"), 2, " poin"),
+            ("Recall melanoma", t.get("recall_melanoma") or class_tests.get("melanoma"), 3, ""),
+            ("Recall nevi", class_tests.get("melanocytic nevi"), 3, ""),
+            ("Accuracy", t.get("accuracy"), 2, " poin"),
+            ("F1 makro", t.get("f1_macro"), 3, "")]
+    log_fn("")
+    log_fn(f"  BARIS TABEL 4.9 ({LABELS.get(attn, attn)} vs baseline)")
+    log_fn("  Metrik | Selisih rata-rata | Lebih tinggi | p-value")
+    rows = []
+    for name, r, nd, unit in spec:
+        if not r:
+            continue
+        cells = [name, _signed(r["mean_diff"], nd, unit), f"{r['wins']} dari {r['n']} seed",
+                 _fmt(r["p"], 3) if r["p"] == r["p"] else "-"]
+        rows.append(cells)
+        log_fn("  " + " | ".join(cells))
+    return rows
+
+
+def _table_4_10_rows(summary, class_tests, attn, n_test, log_fn):
+    """Baris Tabel 4.10: recall per kelas baseline vs `attn` (mean ± std, p)."""
+    if "none" not in summary or attn not in summary:
+        return []
+    log_fn("")
+    log_fn(f"  BARIS TABEL 4.10 (recall per kelas, baseline vs {LABELS.get(attn, attn)})")
+    log_fn("  Kelas | n uji | Baseline | Modul | p-value")
+    rows = []
+    for cls, rb in summary["none"]["recall_per_class"].items():
+        ra = summary[attn]["recall_per_class"].get(cls)
+        if ra is None:
+            continue
+        p = class_tests.get(cls, {}).get("p", float("nan"))
+        cells = [ABBR.get(cls, cls), _fmt(n_test.get(cls, 0), 0),
+                 f"{_fmt(rb['mean'], 3)} ± {_fmt(rb['std'], 3)}",
+                 f"{_fmt(ra['mean'], 3)} ± {_fmt(ra['std'], 3)}",
+                 _fmt(p, 3) if p == p else "-"]
+        rows.append(cells)
+        log_fn("  " + " | ".join(cells))
+    return rows
 
 
 def _table_rows(summary, attentions, log_fn):
@@ -397,26 +501,49 @@ def run(log_fn, attentions=None, seeds=None, epochs=None):
     if "fsca" in summary and others:
         log_fn("\n--- (b) FSCA vs modul atensi lain (selisih = FSCA - modul) ---")
         tests["fsca_vs"] = _paired_tests(raw, "fsca", log_fn, rivals=others)
+    # (c) recall setiap kelas vs baseline -> Tabel 4.9 (recall nevi) & Tabel 4.10
+    class_tests = {}
+    if "none" in summary:
+        for attn in attentions:
+            if attn != "none" and attn in summary:
+                class_tests[attn] = _paired_class_tests(raw, attn, "none")
+        if class_tests:
+            log_fn("\n--- (c) Recall per kelas vs baseline (selisih = modul - baseline) ---")
+            for attn, ct in class_tests.items():
+                log_fn(f"  {attn.upper()}:")
+                for cls, r in ct.items():
+                    log_fn(f"    {cls:<46} {r['mean_diff']:>+8.3f}  menang {r['wins']}/{r['n']}"
+                           f"  p {r['p']:.3f}")
+    tests["recall_per_class_vs_baseline"] = class_tests
+
     if tests["vs_baseline"] or tests["fsca_vs"]:
         log_fn("\nCatatan: p < 0.05 berarti selisih signifikan. Dengan n=5 seed, "
                "selisih kecil yang konsisten (mis. menang 5/5) tetap layak dilaporkan "
                "walau p belum < 0.05.")
 
     table_rows = _table_rows(summary, attentions, log_fn)
+    n_test = next((r.get("n_test_per_class") for rs in raw.values() for r in rs
+                   if r.get("n_test_per_class")), {}) or {}
+    focus = "fsca" if "fsca" in class_tests else next(iter(class_tests), None)
+    rows_4_9 = _table_4_9_rows(tests, class_tests.get(focus, {}), focus, log_fn) if focus else []
+    rows_4_10 = (_table_4_10_rows(summary, class_tests.get(focus, {}), focus, n_test, log_fn)
+                 if focus else [])
 
     log_fn(f"\nTotal waktu: {(time.time() - t_start) / 60:.1f} menit")
 
-    _plot(summary, CHART_PATH)
-    log_fn(f"Chart perbandingan -> {CHART_PATH}")
+    report_path, chart_path = _report_paths(epochs)
+    _plot(summary, chart_path)
+    log_fn(f"Chart perbandingan -> {chart_path}")
 
     payload = {"summary": summary, "raw": raw, "paired_tests": tests,
+               "table_4_9_rows": rows_4_9, "table_4_10_rows": rows_4_10,
                "table_4_11_rows": table_rows,
                "attentions": attentions, "seeds": seeds, "epochs": epochs,
                "select_metric": select_metric, "tta": EVAL_CONFIG.get("tta", False),
-               "chart_path": CHART_PATH}
-    with open(REPORT_PATH, "w") as f:
+               "chart_path": chart_path}
+    with open(report_path, "w") as f:
         json.dump(payload, f, indent=2)
-    log_fn(f"Report tersimpan -> {REPORT_PATH}")
+    log_fn(f"Report tersimpan -> {report_path}")
 
     return payload
 
