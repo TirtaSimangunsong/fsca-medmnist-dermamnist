@@ -5,10 +5,10 @@ Semua gambar dibuat dari berkas JSON di outputs/, jadi angka pada gambar
 selalu sama dengan angka pada tabel. Gaya gambar: latar putih, font serif,
 koma desimal (format laporan berbahasa Indonesia).
 
-  Gambar 4.2  gambar_4_2_kurva_pelatihan.png   <- *training_history.json
-  Gambar 4.3  gambar_4_3_bias_melanoma.png     <- *evaluation_report.json (val_sweep)
-  Gambar 4.4  gambar_4_4_confusion_matrix.png  <- *evaluation_report.json
-  Gambar 4.5  gambar_4_5_multi_seed.png        <- ablation_report.json (Step 11)
+  Gambar 4.2  gambar_4_2_multi_seed.png        <- ablation_report.json (Step 11)
+  Gambar 4.3  gambar_4_3_kurva_pelatihan.png   <- *training_history.json
+  Gambar 4.4  gambar_4_4_bias_melanoma.png     <- *evaluation_report.json (val_sweep)
+  Gambar 4.5  gambar_4_5_confusion_matrix.png  <- *evaluation_report.json
   Gambar 4.6  gambar_4_6_gradcam.png           <- salinan outputs/gradcam_grid.png (Step 8)
   Gambar 4.7  gambar_4_7_gradcam_fsca.png      <- salinan outputs/gradcam_fsca_effect.png (Step 8)
 
@@ -84,7 +84,7 @@ def _save(fig, name):
 
 
 # ---------------------------------------------------------------------------
-# Gambar 4.2 - kurva loss dan AUC validasi (run tunggal seed 42)
+# Gambar 4.3 - kurva loss dan AUC validasi (run tunggal)
 # ---------------------------------------------------------------------------
 def fig_training_curve(hb, hf):
     n_ep = len(hf["val_loss"])
@@ -123,11 +123,11 @@ def fig_training_curve(hb, hf):
     ax.set_xticks(ticks)
     ax.yaxis.set_major_formatter(COMMA)
     ax.grid(axis="y", color=GRID)
-    _save(fig, "gambar_4_2_kurva_pelatihan.png")
+    _save(fig, "gambar_4_3_kurva_pelatihan.png")
 
 
 # ---------------------------------------------------------------------------
-# Gambar 4.3 - sapuan bias logit melanoma pada data validasi
+# Gambar 4.4 - sapuan bias logit melanoma pada data validasi
 # ---------------------------------------------------------------------------
 def fig_melanoma_bias(rb, rf):
     fig, axes = plt.subplots(1, 2, figsize=(9.2, 3.4))
@@ -157,11 +157,11 @@ def fig_melanoma_bias(rb, rf):
     axes[0].set_title("Recall melanoma naik seiring bias", color=INK)
     axes[1].set_ylabel("Balanced accuracy (%) (validasi)")
     axes[1].set_title("Balanced accuracy turun pada bias besar", color=INK)
-    _save(fig, "gambar_4_3_bias_melanoma.png")
+    _save(fig, "gambar_4_4_bias_melanoma.png")
 
 
 # ---------------------------------------------------------------------------
-# Gambar 4.4 - confusion matrix test set (persentase per baris)
+# Gambar 4.5 - confusion matrix test set (persentase per baris)
 # ---------------------------------------------------------------------------
 def fig_confusion(rb, rf):
     fig, axes = plt.subplots(1, 2, figsize=(9.2, 4.0))
@@ -186,16 +186,16 @@ def fig_confusion(rb, rf):
                         f"MEL→NV {pct[mel, nv]:.0f}%"), color=INK)
         for s in ax.spines.values():
             s.set_visible(False)
-    _save(fig, "gambar_4_4_confusion_matrix.png")
+    _save(fig, "gambar_4_5_confusion_matrix.png")
 
 
 # ---------------------------------------------------------------------------
-# Gambar 4.5 - hasil lima seed, berpasangan per seed
+# Gambar 4.2 - hasil lima seed, berpasangan per seed
 # ---------------------------------------------------------------------------
 def fig_multi_seed(ab):
     raw = ab.get("raw", {})
     if "none" not in raw or "fsca" not in raw:
-        print("[lewati] Gambar 4.5: ablation_report.json belum memuat 'none' dan 'fsca'")
+        print("[lewati] Gambar 4.2: ablation_report.json belum memuat 'none' dan 'fsca'")
         return
     by_n = {r["seed"]: r for r in raw["none"]}
     by_f = {r["seed"]: r for r in raw["fsca"]}
@@ -228,7 +228,7 @@ def fig_multi_seed(ab):
         ax.set_xlim(-0.7, 1.7)
         ax.yaxis.set_major_formatter(COMMA)
         ax.grid(axis="y", color=GRID)
-    _save(fig, "gambar_4_5_multi_seed.png")
+    _save(fig, "gambar_4_2_multi_seed.png")
 
 
 def copy_step8(src, name):
@@ -247,13 +247,13 @@ def main():
 
     hist_items = [(PATHS["baseline_history"], hb), (PATHS["training_history"], hf)]
     rep_items = [(PATHS["baseline_report"], rb), (PATHS["evaluation_report"], rf)]
-    if _need("Gambar 4.2", *hist_items):
+    if _need("Gambar 4.3", *hist_items):
         fig_training_curve(hb, hf)
-    if _need("Gambar 4.3", *rep_items):
-        fig_melanoma_bias(rb, rf)
     if _need("Gambar 4.4", *rep_items):
+        fig_melanoma_bias(rb, rf)
+    if _need("Gambar 4.5", *rep_items):
         fig_confusion(rb, rf)
-    if _need("Gambar 4.5", (PATHS["ablation_report"], ab)):
+    if _need("Gambar 4.2", (PATHS["ablation_report"], ab)):
         if ab.get("epochs") != TRAIN_HP["epochs"]:
             print(f"[info] ablation_report.json memakai {ab.get('epochs')} epoch, "
                   f"resep final {TRAIN_HP['epochs']} epoch")

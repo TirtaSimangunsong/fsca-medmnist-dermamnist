@@ -58,10 +58,10 @@ python measure_efficiency.py
 ```
 
 Kedua perintah mencetak baris tabel dalam format laporan (koma desimal) yang bisa langsung
-disalin ke laporan: `run_ablation.py` untuk Tabel 4.9, 4.10, dan 4.11, sedangkan
-`measure_efficiency.py` untuk Tabel 4.4 (rincian per slot) dan Tabel 4.12.
+disalin ke laporan: `run_ablation.py` untuk Tabel 4.6, 4.7, dan 4.8, sedangkan
+`measure_efficiency.py` untuk Tabel 4.4 (rincian per slot) dan Tabel 4.13.
 
-Baris "100 epoch" pada Tabel 4.8 (resep lama) dievaluasi ulang dari checkpoint yang sudah ada
+Baris "100 epoch" pada Tabel 4.5 (resep lama) dievaluasi ulang dari checkpoint yang sudah ada
 dan disimpan terpisah ke `ablation_report_ep100.json`, sehingga laporan resep final tidak tertimpa:
 
 ```bash
@@ -91,13 +91,13 @@ python make_report_figures.py      # hasil: outputs/report_figures/
 
 | Berkas | Dibuat oleh | Dipakai di laporan |
 |---|---|---|
-| `baseline_evaluation_report.json`, `evaluation_report.json` | Step 4, Step 7 | Tabel 4.5–4.7, Gambar 4.3–4.4 |
+| `baseline_evaluation_report.json`, `evaluation_report.json` | Step 4, Step 7 | Tabel 4.10–4.12, Gambar 4.4–4.5 |
 | `comparison_report.json` | Step 7 | Tabel perbandingan baseline vs FSCA |
-| `training_curve.png`, `baseline_training_curve.png` | Step 4, Step 6 | Gambar 4.2 |
+| `training_curve.png`, `baseline_training_curve.png` | Step 4, Step 6 | Gambar 4.3 |
 | `gradcam_grid.png`, `gradcam_fsca_effect.png` | Step 8 | Gambar 4.6–4.7 |
-| `ablation_report.json`, `ablation_comparison.png` | `run_ablation.py` | Tabel 4.8–4.11, Gambar 4.5 |
-| `ablation_report_ep100.json` | `run_ablation.py --epochs 100` | Tabel 4.8 (baris 100 epoch) |
-| `efficiency_report.json` | `measure_efficiency.py` | Tabel 4.4, Tabel 4.12 |
+| `ablation_report.json`, `ablation_comparison.png` | `run_ablation.py` | Tabel 4.5–4.9, Gambar 4.2 |
+| `ablation_report_ep100.json` | `run_ablation.py --epochs 100` | Tabel 4.5 (baris 100 epoch) |
+| `efficiency_report.json` | `measure_efficiency.py` | Tabel 4.4, Tabel 4.13 |
 | `report_figures/gambar_4_*.png` | `make_report_figures.py` | Gambar 4.2–4.7 |
 
 ## Struktur

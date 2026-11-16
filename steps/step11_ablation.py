@@ -30,19 +30,19 @@ Perbaikan dari versi sebelumnya
    (melanoma, dermatofibroma). Checkpoint yang sudah ada hanya dievaluasi
    ulang (tanpa training), jadi recall per kelas untuk run lama bisa didapat
    cepat dengan menjalankan ulang perintah yang sama.
-7. (Finalisasi laporan, Nov 2026) Untuk Tabel 4.11:
+7. (Finalisasi laporan, Nov 2026) Untuk Tabel 4.8:
    - recall melanoma tiap run disimpan sebagai metrik tersendiri
      ("recall_melanoma") sehingga ikut dirata-rata dan diuji;
    - jumlah parameter modul atensi ("params_attention") dicatat;
    - uji t berpasangan dilakukan dua arah: setiap modul vs baseline ("none")
      dan FSCA vs setiap modul atensi lain (termasuk CBAM, inti hipotesis);
-   - baris Tabel 4.11 dicetak dalam format laporan (koma desimal) agar bisa
+   - baris Tabel 4.8 dicetak dalam format laporan (koma desimal) agar bisa
      langsung disalin.
 8. Recall setiap kelas juga diuji berpasangan (modul vs baseline), sehingga
-   baris "Recall nevi" pada Tabel 4.9 dan kolom p-value Tabel 4.10 berasal
-   dari kode. Baris Tabel 4.9 dan Tabel 4.10 ikut dicetak dalam format laporan.
+   baris "Recall nevi" pada Tabel 4.6 dan kolom p-value Tabel 4.7 berasal
+   dari kode. Baris Tabel 4.6 dan Tabel 4.7 ikut dicetak dalam format laporan.
 9. Resep selain TRAIN_HP["epochs"] (mis. --epochs 100 untuk baris "100 epoch"
-   pada Tabel 4.8) disimpan ke ablation_report_ep<E>.json, sehingga tidak
+   pada Tabel 4.5) disimpan ke ablation_report_ep<E>.json, sehingga tidak
    menimpa laporan resep final.
 
 Output: outputs/ablation_report.json        (resep final, 40 epoch)
@@ -232,8 +232,8 @@ def _signed(x, nd, unit=""):
     return f"{'+' if x >= 0 else '−'}{s}{unit}"
 
 
-def _table_4_9_rows(tests, class_tests, attn, log_fn):
-    """Baris Tabel 4.9: uji t berpasangan `attn` terhadap baseline."""
+def _table_4_6_rows(tests, class_tests, attn, log_fn):
+    """Baris Tabel 4.6: uji t berpasangan `attn` terhadap baseline."""
     t = tests.get("vs_baseline", {}).get(attn)
     if not t:
         return []
@@ -244,7 +244,7 @@ def _table_4_9_rows(tests, class_tests, attn, log_fn):
             ("Accuracy", t.get("accuracy"), 2, " poin"),
             ("F1 makro", t.get("f1_macro"), 3, "")]
     log_fn("")
-    log_fn(f"  BARIS TABEL 4.9 ({LABELS.get(attn, attn)} vs baseline)")
+    log_fn(f"  BARIS TABEL 4.6 ({LABELS.get(attn, attn)} vs baseline)")
     log_fn("  Metrik | Selisih rata-rata | Lebih tinggi | p-value")
     rows = []
     for name, r, nd, unit in spec:
@@ -257,12 +257,12 @@ def _table_4_9_rows(tests, class_tests, attn, log_fn):
     return rows
 
 
-def _table_4_10_rows(summary, class_tests, attn, n_test, log_fn):
-    """Baris Tabel 4.10: recall per kelas baseline vs `attn` (mean ± std, p)."""
+def _table_4_7_rows(summary, class_tests, attn, n_test, log_fn):
+    """Baris Tabel 4.7: recall per kelas baseline vs `attn` (mean ± std, p)."""
     if "none" not in summary or attn not in summary:
         return []
     log_fn("")
-    log_fn(f"  BARIS TABEL 4.10 (recall per kelas, baseline vs {LABELS.get(attn, attn)})")
+    log_fn(f"  BARIS TABEL 4.7 (recall per kelas, baseline vs {LABELS.get(attn, attn)})")
     log_fn("  Kelas | n uji | Baseline | Modul | p-value")
     rows = []
     for cls, rb in summary["none"]["recall_per_class"].items():
@@ -280,11 +280,11 @@ def _table_4_10_rows(summary, class_tests, attn, n_test, log_fn):
 
 
 def _table_rows(summary, attentions, log_fn):
-    """Cetak baris Tabel 4.11 (format laporan) untuk disalin ke Word."""
+    """Cetak baris Tabel 4.8 (format laporan) untuk disalin ke Word."""
     spec = [("accuracy", 2), ("balanced_accuracy", 2), ("f1_macro", 3),
             ("auc_macro", 4), ("recall_melanoma", 3)]
     log_fn("")
-    log_fn("  BARIS TABEL 4.11 (salin ke laporan; kolom dipisah ' | ')")
+    log_fn("  BARIS TABEL 4.8 (salin ke laporan; kolom dipisah ' | ')")
     log_fn("  Model | Parameter atensi | Accuracy (%) | Balanced acc. (%) | F1 makro | AUC makro | Recall MEL")
     rows = []
     for attn in attentions:
@@ -501,7 +501,7 @@ def run(log_fn, attentions=None, seeds=None, epochs=None):
     if "fsca" in summary and others:
         log_fn("\n--- (b) FSCA vs modul atensi lain (selisih = FSCA - modul) ---")
         tests["fsca_vs"] = _paired_tests(raw, "fsca", log_fn, rivals=others)
-    # (c) recall setiap kelas vs baseline -> Tabel 4.9 (recall nevi) & Tabel 4.10
+    # (c) recall setiap kelas vs baseline -> Tabel 4.6 (recall nevi) & Tabel 4.7
     class_tests = {}
     if "none" in summary:
         for attn in attentions:
@@ -525,8 +525,8 @@ def run(log_fn, attentions=None, seeds=None, epochs=None):
     n_test = next((r.get("n_test_per_class") for rs in raw.values() for r in rs
                    if r.get("n_test_per_class")), {}) or {}
     focus = "fsca" if "fsca" in class_tests else next(iter(class_tests), None)
-    rows_4_9 = _table_4_9_rows(tests, class_tests.get(focus, {}), focus, log_fn) if focus else []
-    rows_4_10 = (_table_4_10_rows(summary, class_tests.get(focus, {}), focus, n_test, log_fn)
+    rows_4_6 = _table_4_6_rows(tests, class_tests.get(focus, {}), focus, log_fn) if focus else []
+    rows_4_7 = (_table_4_7_rows(summary, class_tests.get(focus, {}), focus, n_test, log_fn)
                  if focus else [])
 
     log_fn(f"\nTotal waktu: {(time.time() - t_start) / 60:.1f} menit")
@@ -536,8 +536,8 @@ def run(log_fn, attentions=None, seeds=None, epochs=None):
     log_fn(f"Chart perbandingan -> {chart_path}")
 
     payload = {"summary": summary, "raw": raw, "paired_tests": tests,
-               "table_4_9_rows": rows_4_9, "table_4_10_rows": rows_4_10,
-               "table_4_11_rows": table_rows,
+               "table_4_6_rows": rows_4_6, "table_4_7_rows": rows_4_7,
+               "table_4_8_rows": table_rows,
                "attentions": attentions, "seeds": seeds, "epochs": epochs,
                "select_metric": select_metric, "tta": EVAL_CONFIG.get("tta", False),
                "chart_path": chart_path}

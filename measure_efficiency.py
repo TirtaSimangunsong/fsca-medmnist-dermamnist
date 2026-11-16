@@ -27,7 +27,7 @@ Cara pakai (di folder repo):
     PYTORCH_ENABLE_MPS_FALLBACK=1 python measure_efficiency.py
 
 Output: outputs/efficiency_report.json (+ tabel di terminal dan baris
-        Tabel 4.4 dan Tabel 4.12 dalam format laporan, koma desimal)
+        Tabel 4.4 dan Tabel 4.13 dalam format laporan, koma desimal)
 """
 
 import io
@@ -232,9 +232,9 @@ def main():
               f"{r['gflops_total']:>9.4f}{r['file_size_mb']:>11.2f}{lat}")
     print("=" * 100)
 
-    # Baris Tabel 4.12 (format laporan)
+    # Baris Tabel 4.13 (format laporan)
     lat_dev = [d for d in ("cpu", "mps", "cuda") if d in report["devices"]]
-    print("\nBARIS TABEL 4.12 (salin ke laporan; kolom dipisah ' | ')")
+    print("\nBARIS TABEL 4.13 (salin ke laporan; kolom dipisah ' | ')")
     print("Model | Parameter | GFLOPs per citra | Ukuran berkas (MB) | "
           + " | ".join(f"Latensi {d.upper()} (ms)" for d in lat_dev))
     rows = []
@@ -259,7 +259,7 @@ def main():
                 b, m = base["latency"][d]["latency_ms_mean"], r["latency"][d]["latency_ms_mean"]
                 line += f", latensi {d} {100 * (m - b) / b:+.1f}%"
             print(line)
-    report["table_4_12_rows"] = rows
+    report["table_4_13_rows"] = rows
 
     # Baris Tabel 4.4 (rincian per slot) untuk setiap model beratensi
     report["table_4_4_rows"] = {}
