@@ -1,0 +1,10 @@
+# Sampah macOS / Python
+.DS_Store
+__pycache__/
+*.pyc
+
+# Duplikat ResNet18_FSCA_DermaMNIST_Best.pth, dibuat ulang tiap training
+outputs/checkpoint_best.pth
+
+# Run ablasi yang terputus
+outputs/ablation/*.partial.pth
