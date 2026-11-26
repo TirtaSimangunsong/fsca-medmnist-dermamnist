@@ -13,8 +13,8 @@ Mengukur, untuk setiap model yang checkpoint-nya tersedia:
     peta fiturnya, untuk Tabel 4.4.
 
 Model yang diukur (kelimanya SELALU diukur):
-  - ResNet-18 Baseline  : outputs/ResNet18_Baseline_DermaMNIST_Best.pth
-  - ResNet-18 + FSCA    : outputs/ResNet18_FSCA_DermaMNIST_Best.pth
+  - ResNet-18 Baseline  : outputs/models/ResNet18_Baseline_DermaMNIST_Best.pth
+  - ResNet-18 + FSCA    : outputs/models/ResNet18_FSCA_DermaMNIST_Best.pth
   - ResNet-18 + SE/ECA/CBAM : outputs/ablation/<attn>_seed0_ep<E>_auc.pth
     (hasil Step 11)
 Parameter, FLOPs, dan latensi hanya bergantung pada ARSITEKTUR, bukan pada
@@ -26,7 +26,7 @@ persis dengan ukuran .pth yang akan dihasilkan training.
 Cara pakai (di folder repo):
     PYTORCH_ENABLE_MPS_FALLBACK=1 python measure_efficiency.py
 
-Output: outputs/efficiency_report.json (+ tabel di terminal dan baris
+Output: outputs/json/efficiency_report.json (+ tabel di terminal dan baris
         Tabel 4.4 dan Tabel 4.13 dalam format laporan, koma desimal)
 """
 
@@ -43,7 +43,7 @@ sys.path.insert(0, os.path.join(BASE_DIR, "steps"))
 
 from config import PATHS, DATASET, EXPERIMENT  # noqa: E402
 
-REPORT_PATH = os.path.join(PATHS["output_dir"], "efficiency_report.json")
+REPORT_PATH = os.path.join(PATHS["output_dir"], "json", "efficiency_report.json")
 WARMUP, RUNS = 20, 200          # batch 1
 SLOTS = ("fsca1", "fsca2", "fsca3", "fsca4")
 SLOT_AFTER = {"fsca1": "layer1", "fsca2": "layer2", "fsca3": "layer3", "fsca4": "layer4"}

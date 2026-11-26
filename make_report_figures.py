@@ -9,8 +9,8 @@ koma desimal (format laporan berbahasa Indonesia).
   Gambar 4.3  gambar_4_3_kurva_pelatihan.png   <- *training_history.json
   Gambar 4.4  gambar_4_4_bias_melanoma.png     <- *evaluation_report.json (val_sweep)
   Gambar 4.5  gambar_4_5_confusion_matrix.png  <- *evaluation_report.json
-  Gambar 4.6  gambar_4_6_gradcam.png           <- salinan outputs/gradcam_grid.png (Step 8)
-  Gambar 4.7  gambar_4_7_gradcam_fsca.png      <- salinan outputs/gradcam_fsca_effect.png (Step 8)
+  Gambar 4.6  gambar_4_6_gradcam.png           <- salinan outputs/png/gradcam_grid.png (Step 8)
+  Gambar 4.7  gambar_4_7_gradcam_fsca.png      <- salinan outputs/png/gradcam_fsca_effect.png (Step 8)
 
 Urutan menjalankan: Step 4 (baseline), Step 6 (FSCA), Step 7 (evaluasi),
 Step 8 (Grad-CAM), run_ablation.py (Step 11), lalu:
@@ -259,7 +259,7 @@ def main():
                   f"resep final {TRAIN_HP['epochs']} epoch")
         fig_multi_seed(ab)
     copy_step8(PATHS["gradcam_grid_chart"], "gambar_4_6_gradcam.png")
-    copy_step8(os.path.join(PATHS["output_dir"], "gradcam_fsca_effect.png"),
+    copy_step8(os.path.join(PATHS["png_dir"], "gradcam_fsca_effect.png"),
                "gambar_4_7_gradcam_fsca.png")
     print(f"\nSelesai. Gambar ada di {OUT_DIR}")
 

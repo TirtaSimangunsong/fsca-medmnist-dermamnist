@@ -23,9 +23,9 @@ ImageNet, dengan:
 Fungsi train_one_run() juga dipakai Step 4: Baseline ResNet-18
 (step_baseline.py, attention="none") dan Step 11 (ablasi multi-seed).
 
-Output: outputs/checkpoint_best.pth,
-        outputs/ResNet18_FSCA_DermaMNIST_Best.pth (salinan = model final),
-        outputs/training_curve.png, outputs/training_history.json
+Output: outputs/models/checkpoint_best.pth,
+        outputs/models/ResNet18_FSCA_DermaMNIST_Best.pth (salinan = model final),
+        outputs/png/training_curve.png, outputs/json/training_history.json
 """
 
 import os

@@ -32,7 +32,7 @@ Nama atribut slotnya tetap fsca1..fsca4 untuk SEMUA pilihan atensi agar:
   (b) hook Grad-CAM ke model.fsca4 tetap valid.
 Baseline ResNet-18 (step_baseline.py) = attention "none" (slot = Identity).
 
-Disimpan ke outputs/model_summary.txt untuk dokumentasi.
+Disimpan ke outputs/txt/model_summary.txt untuk dokumentasi.
 """
 
 import os
@@ -299,7 +299,7 @@ def run(log_fn):
     buf.write(f"n_classes      : {n_classes}\n")
     buf.write(f"\nModules:\n{model}\n")
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(os.path.dirname(SUMMARY_PATH), exist_ok=True)
     with open(SUMMARY_PATH, "w") as f:
         f.write(buf.getvalue())
 

@@ -50,10 +50,10 @@ RINGKASAN PERBAIKAN dari versi sebelumnya
 8. Device dipilih lewat common.resolve_device() (DEVICE_CONFIG "auto":
    MPS -> CUDA -> CPU), sama seperti Step 5, 6, 7, 10, dan 11.
 
-Output: outputs/gradcam_grid.png            (grid utama, multi-layer)
-        outputs/gradcam_fsca_effect.png     (layer4 vs fsca4)
-        outputs/gradcam/class_{i}_{name}.png
-        outputs/gradcam/gradcam_diagnostics.json
+Output: outputs/png/gradcam_grid.png        (grid utama, multi-layer)
+        outputs/png/gradcam_fsca_effect.png (layer4 vs fsca4)
+        outputs/png/gradcam/class_{i}_{name}.png
+        outputs/json/gradcam_diagnostics.json
 """
 
 import os
@@ -71,8 +71,8 @@ META_PATH    = PATHS["dataset_meta"]
 CONFIG_PATH  = PATHS["preprocess_config"]
 GRID_PATH    = PATHS["gradcam_grid_chart"]
 
-EFFECT_PATH      = os.path.join(OUTPUT_DIR, "gradcam_fsca_effect.png")
-DIAGNOSTICS_PATH = os.path.join(GRADCAM_DIR, "gradcam_diagnostics.json")
+EFFECT_PATH      = os.path.join(OUTPUT_DIR, "png", "gradcam_fsca_effect.png")
+DIAGNOSTICS_PATH = os.path.join(OUTPUT_DIR, "json", "gradcam_diagnostics.json")
 
 # Ambang di bawah mana CAM dianggap kosong (tidak ada aktivasi positif)
 DEAD_CAM_EPS = 1e-6

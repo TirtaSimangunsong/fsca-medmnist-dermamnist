@@ -3,7 +3,7 @@ Step 2 - Preprocessing: Normalisasi & Augmentasi
 ==================================================
 Mendefinisikan transform pipeline (augmentasi train, normalisasi val/test)
 dan menghitung mean/std dataset untuk normalisasi yang akurat.
-Hasilnya disimpan ke outputs/preprocess_config.json.
+Hasilnya disimpan ke outputs/json/preprocess_config.json.
 """
 
 import os

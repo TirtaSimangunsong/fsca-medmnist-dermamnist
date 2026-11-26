@@ -11,8 +11,8 @@ Mengumpulkan hasil Step 1–8 dan membuat:
 - Tabel perbandingan literatur
 - Summary chart
 
-Output: outputs/summary_report.png
-        outputs/summary_report.json
+Output: outputs/png/summary_report.png
+        outputs/json/summary_report.json
 """
 
 import os

@@ -45,9 +45,9 @@ Perbaikan dari versi sebelumnya
    pada Tabel 4.5) disimpan ke ablation_report_ep<E>.json, sehingga tidak
    menimpa laporan resep final.
 
-Output: outputs/ablation_report.json        (resep final, 40 epoch)
-        outputs/ablation_report_ep<E>.json  (resep lain, mis. ep100)
-        outputs/ablation_comparison.png
+Output: outputs/json/ablation_report.json        (resep final, 40 epoch)
+        outputs/json/ablation_report_ep<E>.json  (resep lain, mis. ep100)
+        outputs/png/ablation_comparison.png
         outputs/ablation/<attention>_seed<seed>_ep<E>_<metric>.pth
         outputs/ablation/<attention>_seed<seed>_ep<E>_<metric>.history.json
 """

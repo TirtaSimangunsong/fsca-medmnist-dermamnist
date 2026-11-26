@@ -68,7 +68,7 @@ dan disimpan terpisah ke `ablation_report_ep100.json`, sehingga laporan resep fi
 python run_ablation.py --attentions none fsca --epochs 100
 ```
 
-Gambar 4.2–4.7 dibuat ulang dari berkas JSON di `outputs/` (gaya laporan, koma desimal):
+Gambar 4.2–4.7 dibuat ulang dari berkas JSON di `outputs/json/` (gaya laporan, koma desimal):
 
 ```bash
 python make_report_figures.py      # hasil: outputs/report_figures/
@@ -89,15 +89,26 @@ python make_report_figures.py      # hasil: outputs/report_figures/
 
 ## Output utama (`outputs/`)
 
+```
+outputs/
+├── models/          model final (.pth): FSCA dan Baseline
+├── json/            metadata, history, laporan evaluasi/ablasi/efisiensi
+├── png/             grafik dari tiap step
+│   └── gradcam/     Grad-CAM per kelas
+├── txt/             model_summary.txt
+├── ablation/        checkpoint + history + log per run Step 11 (berpasangan)
+└── report_figures/  Gambar 4.2–4.7 versi laporan
+```
+
 | Berkas | Dibuat oleh | Dipakai di laporan |
 |---|---|---|
-| `baseline_evaluation_report.json`, `evaluation_report.json` | Step 4, Step 7 | Tabel 4.10–4.12, Gambar 4.4–4.5 |
-| `comparison_report.json` | Step 7 | Tabel perbandingan baseline vs FSCA |
-| `training_curve.png`, `baseline_training_curve.png` | Step 4, Step 6 | Gambar 4.3 |
-| `gradcam_grid.png`, `gradcam_fsca_effect.png` | Step 8 | Gambar 4.6–4.7 |
-| `ablation_report.json`, `ablation_comparison.png` | `run_ablation.py` | Tabel 4.5–4.9, Gambar 4.2 |
-| `ablation_report_ep100.json` | `run_ablation.py --epochs 100` | Tabel 4.5 (baris 100 epoch) |
-| `efficiency_report.json` | `measure_efficiency.py` | Tabel 4.4, Tabel 4.13 |
+| `json/baseline_evaluation_report.json`, `json/evaluation_report.json` | Step 4, Step 7 | Tabel 4.10–4.12, Gambar 4.4–4.5 |
+| `json/comparison_report.json` | Step 7 | Tabel perbandingan baseline vs FSCA |
+| `json/training_history.json`, `json/baseline_training_history.json` | Step 4, Step 6 | Gambar 4.3 |
+| `png/gradcam_grid.png`, `png/gradcam_fsca_effect.png` | Step 8 | Gambar 4.6–4.7 |
+| `json/ablation_report.json` | `run_ablation.py` | Tabel 4.5–4.9, Gambar 4.2 |
+| `json/ablation_report_ep100.json` | `run_ablation.py --epochs 100` | Tabel 4.5 (baris 100 epoch) |
+| `json/efficiency_report.json` | `measure_efficiency.py` | Tabel 4.4, Tabel 4.13 |
 | `report_figures/gambar_4_*.png` | `make_report_figures.py` | Gambar 4.2–4.7 |
 
 ## Struktur
@@ -107,7 +118,7 @@ config.py              konfigurasi terpusat (path, dataset, augmentasi, HP, mode
 gui.py                 antarmuka Tkinter (Step 1–10)
 run_ablation.py        Step 11 dari terminal (log ke outputs/ablation/ablation_log.txt)
 measure_efficiency.py  parameter, FLOPs, latensi, ukuran berkas
-make_report_figures.py gambar Bab IV dari outputs/*.json
+make_report_figures.py gambar Bab IV dari outputs/json/*.json
 steps/common.py        dataloader, transformasi, metrik, bias melanoma
 steps/step*.py         satu berkas per tahap pipeline
 ```

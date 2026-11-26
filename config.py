@@ -70,7 +70,7 @@ os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 # =========================================================
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR   = os.path.join(PROJECT_ROOT, "outputs")
-GRADCAM_DIR  = os.path.join(OUTPUT_DIR, "gradcam")
+GRADCAM_DIR  = os.path.join(OUTPUT_DIR, "png", "gradcam")   # Grad-CAM per kelas
 ABLATION_DIR = os.path.join(OUTPUT_DIR, "ablation")
 
 PATHS = {
@@ -78,44 +78,44 @@ PATHS = {
     "gradcam_dir":        GRADCAM_DIR,
 
     # Metadata & config antar-step
-    "dataset_meta":       os.path.join(OUTPUT_DIR, "dataset_meta.json"),
-    "preprocess_config":  os.path.join(OUTPUT_DIR, "preprocess_config.json"),
-    "split_info":         os.path.join(OUTPUT_DIR, "split_info.json"),
-    "model_summary":      os.path.join(OUTPUT_DIR, "model_summary.txt"),
+    "dataset_meta":       os.path.join(OUTPUT_DIR, "json", "dataset_meta.json"),
+    "preprocess_config":  os.path.join(OUTPUT_DIR, "json", "preprocess_config.json"),
+    "split_info":         os.path.join(OUTPUT_DIR, "json", "split_info.json"),
+    "model_summary":      os.path.join(OUTPUT_DIR, "txt", "model_summary.txt"),
 
     # Checkpoint & model
-    "checkpoint_best":    os.path.join(OUTPUT_DIR, "checkpoint_best.pth"),
-    "final_model":        os.path.join(OUTPUT_DIR, "ResNet18_FSCA_DermaMNIST_Best.pth"),
+    "checkpoint_best":    os.path.join(OUTPUT_DIR, "models", "checkpoint_best.pth"),
+    "final_model":        os.path.join(OUTPUT_DIR, "models", "ResNet18_FSCA_DermaMNIST_Best.pth"),
 
     # Baseline ResNet-18 tanpa modul atensi (step_baseline.py)
-    "baseline_model":       os.path.join(OUTPUT_DIR, "ResNet18_Baseline_DermaMNIST_Best.pth"),
-    "baseline_history":     os.path.join(OUTPUT_DIR, "baseline_training_history.json"),
-    "baseline_curve_chart": os.path.join(OUTPUT_DIR, "baseline_training_curve.png"),
-    "baseline_report":      os.path.join(OUTPUT_DIR, "baseline_evaluation_report.json"),
-    "baseline_cm_chart":    os.path.join(OUTPUT_DIR, "baseline_confusion_matrix.png"),
+    "baseline_model":       os.path.join(OUTPUT_DIR, "models", "ResNet18_Baseline_DermaMNIST_Best.pth"),
+    "baseline_history":     os.path.join(OUTPUT_DIR, "json", "baseline_training_history.json"),
+    "baseline_curve_chart": os.path.join(OUTPUT_DIR, "png", "baseline_training_curve.png"),
+    "baseline_report":      os.path.join(OUTPUT_DIR, "json", "baseline_evaluation_report.json"),
+    "baseline_cm_chart":    os.path.join(OUTPUT_DIR, "png", "baseline_confusion_matrix.png"),
 
     # History training
-    "training_history":   os.path.join(OUTPUT_DIR, "training_history.json"),
+    "training_history":   os.path.join(OUTPUT_DIR, "json", "training_history.json"),
 
     # Evaluasi
-    "evaluation_report":  os.path.join(OUTPUT_DIR, "evaluation_report.json"),
-    "comparison_report":  os.path.join(OUTPUT_DIR, "comparison_report.json"),
-    "summary_json":       os.path.join(OUTPUT_DIR, "summary_report.json"),
+    "evaluation_report":  os.path.join(OUTPUT_DIR, "json", "evaluation_report.json"),
+    "comparison_report":  os.path.join(OUTPUT_DIR, "json", "comparison_report.json"),
+    "summary_json":       os.path.join(OUTPUT_DIR, "json", "summary_report.json"),
 
     # Ablasi multi-seed (Step 11)
     "ablation_dir":       ABLATION_DIR,
-    "ablation_report":    os.path.join(OUTPUT_DIR, "ablation_report.json"),
-    "ablation_chart":     os.path.join(OUTPUT_DIR, "ablation_comparison.png"),
+    "ablation_report":    os.path.join(OUTPUT_DIR, "json", "ablation_report.json"),
+    "ablation_chart":     os.path.join(OUTPUT_DIR, "png", "ablation_comparison.png"),
 
     # Chart / visualisasi (PNG)
-    "split_distribution_chart": os.path.join(OUTPUT_DIR, "split_distribution.png"),
-    "training_curve_chart":     os.path.join(OUTPUT_DIR, "training_curve.png"),
-    "confusion_matrix_chart":   os.path.join(OUTPUT_DIR, "confusion_matrix.png"),
-    "gradcam_grid_chart":       os.path.join(OUTPUT_DIR, "gradcam_grid.png"),
-    "summary_report_chart":     os.path.join(OUTPUT_DIR, "summary_report.png"),
-    "inference_result_chart":   os.path.join(OUTPUT_DIR, "inference_result.png"),
+    "split_distribution_chart": os.path.join(OUTPUT_DIR, "png", "split_distribution.png"),
+    "training_curve_chart":     os.path.join(OUTPUT_DIR, "png", "training_curve.png"),
+    "confusion_matrix_chart":   os.path.join(OUTPUT_DIR, "png", "confusion_matrix.png"),
+    "gradcam_grid_chart":       os.path.join(OUTPUT_DIR, "png", "gradcam_grid.png"),
+    "summary_report_chart":     os.path.join(OUTPUT_DIR, "png", "summary_report.png"),
+    "inference_result_chart":   os.path.join(OUTPUT_DIR, "png", "inference_result.png"),
 
-    # Folder PNG terorganisir per step (sesuai konvensi GUI kamu)
+    # Folder per jenis berkas: models/ json/ png/ txt/ (lihat ensure_dirs)
     "png_dir":            os.path.join(OUTPUT_DIR, "png"),
 }
 
@@ -307,8 +307,9 @@ DEVICE_CONFIG = {
 def ensure_dirs():
     """Pastikan semua folder output yang dibutuhkan sudah ada."""
     os.makedirs(PATHS["output_dir"], exist_ok=True)
+    for sub in ("models", "json", "png", "txt"):
+        os.makedirs(os.path.join(PATHS["output_dir"], sub), exist_ok=True)
     os.makedirs(PATHS["gradcam_dir"], exist_ok=True)
-    os.makedirs(PATHS["png_dir"], exist_ok=True)
     os.makedirs(PATHS["ablation_dir"], exist_ok=True)
 
 
@@ -336,6 +337,11 @@ def validate_image_size(size):
             f"Jika resolusi berubah, jalankan ulang Step 1 -> Step 2 -> Step 3."
         )
     return True
+
+
+# Folder output dibuat saat config diimpor, supaya step mana pun yang
+# dijalankan lebih dulu tidak gagal karena subfolder belum ada.
+ensure_dirs()
 
 
 if __name__ == "__main__":

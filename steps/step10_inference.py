@@ -15,7 +15,7 @@ Konsistensi dengan step lain:
   sesuai kondisi pemakaian model pada satu citra. Satu-satunya penyesuaian
   logit adalah bias melanoma yang dipilih Step 7 di data validasi.
 
-Output: outputs/inference_result.png
+Output: outputs/png/inference_result.png
 """
 
 import os

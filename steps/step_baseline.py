@@ -16,11 +16,11 @@ Agar perbandingan dengan FSCA adil, baseline memakai komponen yang SAMA:
 - Evaluasi    : step7_evaluation.evaluate_checkpoint() dengan EVAL_CONFIG dan
                 IMBALANCE yang sama dengan Step 7.
 
-Output: outputs/ResNet18_Baseline_DermaMNIST_Best.pth
-        outputs/baseline_training_history.json
-        outputs/baseline_training_curve.png
-        outputs/baseline_evaluation_report.json
-        outputs/baseline_confusion_matrix.png
+Output: outputs/models/ResNet18_Baseline_DermaMNIST_Best.pth
+        outputs/json/baseline_training_history.json
+        outputs/png/baseline_training_curve.png
+        outputs/json/baseline_evaluation_report.json
+        outputs/png/baseline_confusion_matrix.png
 """
 
 import os

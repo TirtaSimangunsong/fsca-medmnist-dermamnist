@@ -12,7 +12,7 @@ Menghasilkan:
 - Sapuan logit adjustment (tau dituning di VALIDATION, dilaporkan di TEST)
 - Test-time augmentation 8-arah
 
-Output: outputs/confusion_matrix.png, outputs/evaluation_report.json
+Output: outputs/png/confusion_matrix.png, outputs/json/evaluation_report.json
 
 RINGKASAN PERBAIKAN dari versi sebelumnya
 ------------------------------------------
